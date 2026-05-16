@@ -8,7 +8,7 @@ import subprocess
 import sys
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -41,9 +41,10 @@ class CLIBootstrapper:
             registry_path: Path to CLI registry JSON file
         """
         if registry_path is None:
-            registry_path = Path(__file__).parent / "cli_registry.json"
+            self.registry_path = Path(__file__).parent / "cli_registry.json"
+        else:
+            self.registry_path = Path(registry_path)
         
-        self.registry_path = Path(registry_path)
         self.clis: List[CLITool] = []
         self.load_registry()
     
@@ -178,10 +179,10 @@ class CLIBootstrapper:
             return False
     
     async def bootstrap_all(
-        self, 
+        self,
         progress_callback: Optional[Callable[[str], None]] = None,
         install_optional: bool = True
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Bootstrap all CLI tools
         
