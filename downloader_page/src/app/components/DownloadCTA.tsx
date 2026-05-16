@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { Download, Apple, Terminal, Github, Copy, Check } from "lucide-react";
 import { useState, useEffect } from "react";
+import config from "../../config";
 
 interface PlatformDownload {
   name: string;
@@ -19,35 +20,72 @@ export function DownloadCTA() {
     { name: "macOS", icon: Apple, sub: "Apple Silicon · Intel", file: "AI-CLI-Orchestrator-Setup.dmg", available: false },
     { name: "Linux", icon: Terminal, sub: ".deb · .rpm · AppImage", file: "AI-CLI-Orchestrator-Setup.AppImage", available: false },
   ]);
+  const [apiError, setApiError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const installCmd = "curl -fsSL https://orch.dev/install.sh | sh";
 
-  useEffect(() => {
-    // Fetch version info from API
-    fetch('http://localhost:8000/api/version')
-      .then(res => res.json())
-      .then(data => {
-        setPlatforms(prev => prev.map(p => {
-          const platformKey = p.name.toLowerCase();
-          const downloadInfo = data.downloads[platformKey];
-          
-          if (downloadInfo && downloadInfo.available) {
-            return {
-              ...p,
-              available: true,
-              url: downloadInfo.url,
-              size: downloadInfo.size
-            };
-          }
-          return p;
-        }));
-      })
-      .catch(err => console.error('Failed to fetch version info:', err));
-  }, []);
+  const fetchVersionInfo = async () => {
+    try {
+      const res = await fetch(config.getApiUrl(config.endpoints.version));
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      setPlatforms(prev => prev.map(p => {
+        const platformKey = p.name.toLowerCase();
+        const downloadInfo = data.downloads[platformKey];
+        
+        if (downloadInfo && downloadInfo.available) {
+          return {
+            ...p,
+            available: true,
+            url: downloadInfo.url,
+            size: downloadInfo.size
+          };
+        }
+        return p;
+      }));
+      setApiError(false);
+    } catch (err) {
+      console.error('Failed to fetch version info:', err);
+      setApiError(true);
+      // Auto-retry up to 2 times with exponential backoff
+      if (retryCount < 2) {
+        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+        }, delay);
+      }
+    }
+  };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(installCmd);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  useEffect(() => {
+    fetchVersionInfo();
+  }, [retryCount]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(installCmd);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      // Fallback: create temporary textarea
+      const textarea = document.createElement('textarea');
+      textarea.value = installCmd;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (fallbackErr) {
+        console.error('Fallback copy failed:', fallbackErr);
+      }
+      document.body.removeChild(textarea);
+    }
   };
 
   const formatFileSize = (bytes?: number) => {
@@ -131,7 +169,7 @@ export function DownloadCTA() {
               {platforms.map((p, i) => (
                 <motion.a
                   key={p.name}
-                  href={p.available ? `http://localhost:8000${p.url}` : '#'}
+                  href={p.available ? config.getDownloadUrl(p.url!) : '#'}
                   download={p.available ? p.file : undefined}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}

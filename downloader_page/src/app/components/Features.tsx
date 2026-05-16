@@ -47,9 +47,9 @@ export function Features() {
         </motion.div>
 
         {/* Bento grid */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 auto-rows-[minmax(180px,auto)]">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 auto-rows-[minmax(180px,auto)]">
           {/* Large: Auto Rate Limit Management */}
-          <BentoCard className="md:col-span-4 md:row-span-2" delay={0}>
+          <BentoCard className="sm:col-span-2 md:col-span-4 md:row-span-2" delay={0}>
             <div className="absolute -top-32 -right-32 w-72 h-72 rounded-full bg-emerald-500/20 blur-3xl" />
             <div className="relative h-full flex flex-col">
               <FeatureIcon icon={Activity} color="emerald" />
@@ -106,7 +106,7 @@ export function Features() {
           </BentoCard>
 
           {/* Tall: Unified Context */}
-          <BentoCard className="md:col-span-2 md:row-span-2" delay={0.1}>
+          <BentoCard className="sm:col-span-2 md:col-span-2 md:row-span-2" delay={0.1}>
             <div className="absolute -top-20 -right-20 w-56 h-56 rounded-full bg-violet-500/20 blur-3xl" />
             <div className="relative h-full flex flex-col">
               <FeatureIcon icon={GitBranch} color="violet" />
@@ -140,7 +140,7 @@ export function Features() {
           </BentoCard>
 
           {/* Intelligent Routing */}
-          <BentoCard className="md:col-span-3" delay={0.15}>
+          <BentoCard className="sm:col-span-1 md:col-span-3" delay={0.15}>
             <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-fuchsia-500/20 blur-3xl" />
             <div className="relative">
               <FeatureIcon icon={Route} color="fuchsia" />
@@ -171,7 +171,7 @@ export function Features() {
           </BentoCard>
 
           {/* Session Persistence */}
-          <BentoCard className="md:col-span-3" delay={0.2}>
+          <BentoCard className="sm:col-span-1 md:col-span-3" delay={0.2}>
             <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-blue-500/20 blur-3xl" />
             <div className="relative">
               <FeatureIcon icon={Save} color="blue" />
@@ -198,7 +198,7 @@ export function Features() {
           </BentoCard>
 
           {/* Real-time Monitoring */}
-          <BentoCard className="md:col-span-3" delay={0.25}>
+          <BentoCard className="sm:col-span-1 md:col-span-3" delay={0.25}>
             <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-cyan-500/20 blur-3xl" />
             <div className="relative">
               <FeatureIcon icon={LineChart} color="cyan" />
@@ -226,7 +226,7 @@ export function Features() {
           </BentoCard>
 
           {/* Parallel Execution */}
-          <BentoCard className="md:col-span-3" delay={0.3}>
+          <BentoCard className="sm:col-span-1 md:col-span-3" delay={0.3}>
             <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-rose-500/20 blur-3xl" />
             <div className="relative">
               <FeatureIcon icon={Layers3} color="rose" />

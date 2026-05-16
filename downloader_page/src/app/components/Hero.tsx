@@ -83,23 +83,23 @@ export function Hero() {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, delay: 0.3 }}
-        className="mt-10 flex flex-col sm:flex-row items-center gap-3"
+        className="mt-10 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto px-4 sm:px-0"
       >
         <a
           href="#download"
-          className="group relative inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white text-black hover:bg-neutral-100 transition-all shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_8px_30px_rgba(255,255,255,0.15)] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_12px_50px_rgba(168,85,247,0.4)]"
+          className="group relative inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-white text-black hover:bg-neutral-100 transition-all shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_8px_30px_rgba(255,255,255,0.15)] hover:shadow-[0_0_0_1px_rgba(255,255,255,0.2),0_12px_50px_rgba(168,85,247,0.4)] w-full sm:w-auto"
         >
           <span
             className="absolute -inset-px rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500 opacity-0 group-hover:opacity-100 blur-md transition-opacity -z-10"
           />
           <Download className="w-4 h-4" strokeWidth={2.5} />
           <span style={{ fontWeight: 500 }}>Download Installer</span>
-          <span className="text-neutral-500 text-sm ml-1">— macOS · Linux · Win</span>
+          <span className="hidden md:inline text-neutral-500 text-sm ml-1">— macOS · Linux · Win</span>
         </a>
 
         <a
           href="#features"
-          className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-neutral-200 hover:bg-white/10 transition-all"
+          className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-neutral-200 hover:bg-white/10 transition-all w-full sm:w-auto"
         >
           <Sparkles className="w-4 h-4 text-violet-400" />
           <span>See how it works</span>
@@ -116,7 +116,7 @@ export function Hero() {
         <p className="text-xs uppercase tracking-[0.2em] text-neutral-600">
           Orchestrates 8+ AI CLIs in parallel
         </p>
-        <div className="flex flex-wrap items-center justify-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 px-4">
           {cliLogos.map((cli, i) => (
             <motion.div
               key={cli.name}
@@ -157,7 +157,7 @@ export function Hero() {
           </div>
 
           {/* Dashboard content */}
-          <div className="grid grid-cols-3 gap-px bg-white/5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-white/5">
             {[
               { icon: Cpu, label: "Active CLIs", value: "6 / 8", color: "text-emerald-400" },
               { icon: Layers, label: "Context Sync", value: "1.2s", color: "text-violet-400" },

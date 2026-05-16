@@ -4,38 +4,17 @@ A unified interface for managing multiple AI CLI tools with smart dependency man
 
 ---
 
-## 🎯 Project Overview
-
-This project consists of two main components:
-
-### 1. **Downloader Page** (`downloader_page/`)
-Public-facing website where users download the installer.
-- React + TypeScript frontend
-- FastAPI backend
-- Automatic installer detection
-- Download distribution system
-
-### 2. **Installer Builder** (`installer/`)
-Tools and scripts that BUILD the actual installer executables.
-- PyInstaller packaging
-- Windows installer (Inno Setup)
-- macOS installer (DMG)
-- Smart CLI bootstrapper
-- Workspace initialization
-
----
-
 ## 🚀 Quick Start
 
-### Run Downloader Page
+### Run the Downloader Page (Recommended)
 
-**Windows (Easiest):**
+**Windows:**
 ```bash
 cd downloader_page
 start.bat
 ```
 
-**Manual:**
+**Manual (Any OS):**
 ```bash
 # Terminal 1 - Frontend
 cd downloader_page
@@ -48,36 +27,32 @@ python run.py
 
 **Access:**
 - Frontend: http://localhost:5173
-- Backend: http://localhost:8000
-
-### Build Installers
-
-```bash
-cd installer
-
-# Build all platforms
-python build.py --all
-
-# Build specific platform
-python build.py --windows
-python build.py --macos
-```
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/api/docs
 
 ---
 
 ## 📦 Installation
 
-### Downloader Page Setup:
+### Downloader Page Setup
+
 ```bash
 cd downloader_page
+
+# Install frontend dependencies
 npm install
+
+# Install backend dependencies
 pip install -r backend/requirements.txt
 ```
 
-### Installer Setup:
+### Main UI Setup (Optional - UI Mockup)
+
 ```bash
-cd installer
-pip install -r backend/requirements.txt
+cd frontend
+npm install
+npm run dev
+# Access at http://localhost:5174
 ```
 
 ---
@@ -85,67 +60,35 @@ pip install -r backend/requirements.txt
 ## 📁 Project Structure
 
 ```
-BOB/
+IBMbob/
+├── downloader_page/          # Download website (MAIN PROJECT)
+│   ├── src/                  # React frontend
+│   ├── backend/              # FastAPI backend
+│   │   ├── main.py          # API endpoints
+│   │   ├── config.py        # Configuration
+│   │   ├── utils.py         # Utilities
+│   │   ├── middleware.py    # Security & rate limiting
+│   │   └── run.py           # Dev server
+│   ├── downloads/            # Installer files
+│   ├── .env                  # Development config
+│   ├── .env.production       # Production config
+│   └── README.md            # Detailed documentation
 │
-├── downloader_page/              # Download website
-│   ├── src/                      # React frontend
-│   ├── backend/                  # FastAPI backend
-│   ├── downloads/                # Installer files
-│   ├── start.bat                 # Quick start script
-│   └── README.md                 # Full documentation
+├── frontend/                 # Main UI mockup
+│   └── src/                  # React components
 │
-├── installer/                    # Installer builder
-│   ├── backend/                  # App to package
-│   ├── bootstrapper/             # CLI dependency manager
-│   ├── windows/                  # Windows installer scripts
-│   ├── macos/                    # macOS installer scripts
-│   ├── workspace/                # User workspace templates
-│   ├── build.py                  # Main build script
-│   └── README.md                 # Build documentation
+├── release/                  # Installer builder
+│   └── installer/
+│       ├── backend/          # App to package
+│       ├── bootstrapper/     # CLI manager
+│       ├── windows/          # Windows installer
+│       └── macos/           # macOS installer
 │
-├── backend/                      # Main application backend
-│   └── app/
-│       └── main.py
-│
-├── frontend/                     # Main application frontend
-│   └── src/
-│
-├── shared/                       # Shared resources
-│   ├── skill.md
-│   └── sessions/
-│
-├── PROJECT_STRUCTURE.md          # Detailed structure explanation
-├── README.md                     # This file
+├── shared/                   # Shared resources
+├── README.md                # This file
+├── PROJECT_STRUCTURE.md     # Detailed structure
 └── LICENSE
 ```
-
----
-
-## 🔄 Complete Workflow
-
-### 1. Build Installers
-```bash
-cd installer
-python build.py --all
-```
-**Output:** `installer/dist/AI-CLI-Orchestrator-Setup.exe` and `.dmg`
-
-### 2. Copy to Downloads
-```bash
-cp installer/dist/*.exe downloader_page/downloads/
-cp installer/dist/*.dmg downloader_page/downloads/
-```
-
-### 3. Run Downloader Page
-```bash
-cd downloader_page
-start.bat
-```
-
-### 4. Users Download
-- Visit: http://localhost:8000
-- Click download button
-- Install on their machine
 
 ---
 
@@ -155,10 +98,10 @@ start.bat
 - ✅ Modern React UI with dark theme
 - ✅ Responsive design (mobile/tablet/desktop)
 - ✅ Automatic installer detection
-- ✅ Dynamic download availability
-- ✅ File size display
-- ✅ REST API for version info
-- ✅ Hot reload in development
+- ✅ REST API with FastAPI
+- ✅ Security hardening (CORS, rate limiting, headers)
+- ✅ SHA256 checksums for downloads
+- ✅ Environment-based configuration
 
 ### Installer System
 - ✅ PyInstaller packaging
@@ -166,192 +109,155 @@ start.bat
 - ✅ macOS installer (DMG)
 - ✅ Smart CLI bootstrapper
 - ✅ Automatic dependency management
-- ✅ Workspace initialization
-- ✅ Cross-platform support
 
 ---
 
-## 📚 Documentation
+## 🔧 API Endpoints
 
-### Main Documentation
-- [`README.md`](README.md) - This file (project overview)
-- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) - Detailed structure explanation
-- [`LICENSE`](LICENSE) - MIT License
+### Downloader Backend (Port 8000)
 
-### Component Documentation
-- [`downloader_page/README.md`](downloader_page/README.md) - Complete downloader page guide (438 lines)
-- [`installer/README.md`](installer/README.md) - Installer build documentation
-- [`downloader_page/downloads/README.md`](downloader_page/downloads/README.md) - Installer files info
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serve React frontend |
+| `/api/health` | GET | Health check |
+| `/api/version` | GET | Version info & downloads |
+| `/api/status` | GET | System status |
+| `/api/download/{platform}` | GET | Platform-specific info |
+| `/downloads/{filename}` | GET | Download installer files |
+| `/api/docs` | GET | API documentation (dev only) |
 
 ---
 
 ## 🛠️ Development
 
-### Downloader Page Development
+### Frontend Development
 ```bash
 cd downloader_page
-
-# Frontend (hot reload)
 npm run dev
+# Hot reload enabled at http://localhost:5173
+```
 
-# Backend (auto-reload)
-cd backend && python run.py
+### Backend Development
+```bash
+cd downloader_page/backend
+python run.py
+# Auto-reload enabled at http://localhost:8000
+```
 
-# Production build
+### Production Build
+```bash
+cd downloader_page
 npm run build
 npm run backend
-```
-
-### Installer Development
-```bash
-cd installer
-
-# Test build
-python build.py --windows
-
-# Check output
-ls dist/
+# Access at http://localhost:8000
 ```
 
 ---
 
-## 🌐 URLs
+## 🔒 Security Features
 
-### Downloader Page
-- Frontend Dev: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/api/docs
-- Version Info: http://localhost:8000/api/version
-
----
-
-## 🔧 Tech Stack
-
-### Downloader Page
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS 4, shadcn/ui
-- **Backend**: FastAPI, Uvicorn, Python 3.8+
-
-### Installer
-- **Packaging**: PyInstaller
-- **Windows**: Inno Setup
-- **macOS**: DMG tools
-- **Bootstrapper**: Python, npm
+- **CORS**: Environment-based origin configuration
+- **Rate Limiting**: 100 requests/60s (dev), 50 requests/60s (prod)
+- **Security Headers**: X-Frame-Options, X-Content-Type-Options, etc.
+- **Input Validation**: Strict parameter sanitization
+- **File Validation**: Extension and size checks
+- **SHA256 Checksums**: Automatic generation for downloads
 
 ---
 
-## 📝 Common Tasks
+## 🌐 Environment Configuration
 
-### Start Everything
-```bash
-cd downloader_page
-start.bat
+### Development (.env)
+```env
+ENVIRONMENT=development
+ALLOWED_ORIGINS=http://localhost:8000,http://localhost:5173
+ENABLE_DOCS=true
+RATE_LIMIT_REQUESTS=100
 ```
 
-### Build New Installer
-```bash
-cd installer
-python build.py --windows
-cp dist/*.exe ../downloader_page/downloads/
+### Production (.env.production)
+```env
+ENVIRONMENT=production
+ALLOWED_ORIGINS=https://yourdomain.com
+ENABLE_DOCS=false
+RATE_LIMIT_REQUESTS=50
 ```
 
-### Deploy Downloader Page
-```bash
-cd downloader_page
-npm run build
-# Upload dist/ and backend/ to server
-```
+---
 
-### Update Version
-1. Edit `installer/version.json`
-2. Edit `downloader_page/backend/main.py`
-3. Rebuild installers
-4. Copy to downloads folder
+## 📚 Documentation
+
+- [`README.md`](README.md) - This file (quick start)
+- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) - Detailed structure
+- [`downloader_page/README.md`](downloader_page/README.md) - Complete guide
+- [`downloader_page/DEPLOYMENT.md`](downloader_page/DEPLOYMENT.md) - Deployment guide
+- [`downloader_page/backend/README.md`](downloader_page/backend/README.md) - Backend docs
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Downloader Page Issues
-See [`downloader_page/README.md`](downloader_page/README.md#troubleshooting)
-
-### Installer Build Issues
-See [`installer/README.md`](installer/README.md)
-
-### Common Problems
-
-**Port already in use:**
+### Port Already in Use
 ```bash
 # Windows
 netstat -ano | findstr :8000
 taskkill /PID <PID> /F
+
+# Linux/Mac
+lsof -ti:8000 | xargs kill -9
 ```
 
-**Dependencies not installed:**
+### Dependencies Not Installed
 ```bash
-# Downloader page
+# Frontend
 cd downloader_page
 npm install
-pip install -r backend/requirements.txt
 
-# Installer
-cd installer
-pip install -r backend/requirements.txt
+# Backend
+cd downloader_page/backend
+pip install -r requirements.txt
 ```
 
-**Downloads not working:**
-1. Check backend is running
-2. Check files exist in `downloader_page/downloads/`
-3. Check file names match exactly
-4. Visit http://localhost:8000/api/version
-
----
-
-## 🔒 Security
-
-### Windows SmartScreen Warning
-Downloaded `.exe` files show security warnings because they're not digitally signed.
-
-**To fix:**
-1. Get code signing certificate
-2. Sign installer with `signtool.exe`
-3. Build reputation with Microsoft
-
-### Production Checklist
-- [ ] Sign installers
-- [ ] Restrict CORS origins
-- [ ] Enable HTTPS
-- [ ] Add rate limiting
-- [ ] Generate checksums
-- [ ] Monitor logs
+### Frontend Not Loading
+```bash
+cd downloader_page
+npm run build
+```
 
 ---
 
 ## 🚢 Deployment
 
-### Downloader Page
-See [`downloader_page/README.md#deployment`](downloader_page/README.md#deployment)
-
-### Installer Distribution
-1. Build installers
-2. Copy to `downloader_page/downloads/`
-3. Deploy downloader page
-4. Users download from website
+See [`downloader_page/DEPLOYMENT.md`](downloader_page/DEPLOYMENT.md) for complete deployment instructions including:
+- Docker deployment
+- Systemd service setup
+- Nginx reverse proxy
+- SSL/TLS configuration
+- Production checklist
 
 ---
 
-## 🤝 Contributing
+## 📊 Tech Stack
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+### Frontend
+- React 18
+- TypeScript
+- Vite 6
+- Tailwind CSS 4
+- shadcn/ui components
+
+### Backend
+- FastAPI
+- Uvicorn
+- Python 3.8+
+- Pydantic
+- Custom middleware (rate limiting, security)
 
 ---
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+MIT License - See [LICENSE](LICENSE) file for details
 
 ---
 
@@ -359,33 +265,7 @@ MIT License - See LICENSE file for details
 
 - **Documentation**: Check README files in each directory
 - **Issues**: Create a GitHub issue
-- **API Docs**: Visit http://localhost:8000/api/docs
-
----
-
-## 📊 Project Status
-
-### ✅ Completed
-- Downloader page (frontend + backend)
-- Installer build system
-- Windows installer (Inno Setup)
-- macOS installer (DMG)
-- Smart CLI bootstrapper
-- Workspace initialization
-- Documentation
-- Download functionality
-- API integration
-
-### 🔄 In Progress
-- Real installer testing
-- Code signing
-- Release workflow
-
-### 📋 Planned
-- Linux installer (AppImage)
-- Automated testing
-- CI/CD pipeline
-- Analytics dashboard
+- **API Docs**: Visit http://localhost:8000/api/docs when backend is running
 
 ---
 

@@ -8,10 +8,20 @@ import { DownloadCTA, Footer } from "./components/DownloadCTA";
 
 export default function App() {
   useEffect(() => {
+    // Detect if device is mobile/touch-enabled
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
+    // Only enable Lenis on desktop devices
+    if (isMobile || isTouchDevice) {
+      return; // Use native scrolling on mobile
+    }
+
     const lenis = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
+      touchMultiplier: 0, // Disable touch scrolling
     });
 
     function raf(time: number) {

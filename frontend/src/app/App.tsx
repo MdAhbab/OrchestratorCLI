@@ -239,34 +239,47 @@ function Shell() {
   }, []);
 
   useEffect(() => {
+    // Combined interval to prevent race conditions
+    let usageCounter = 0;
+    let logCounter = 0;
+    
     const id = setInterval(() => {
-      setClis((prev) =>
-        prev.map((c) => {
+      usageCounter++;
+      logCounter++;
+      
+      setClis((prev) => {
+        return prev.map((c) => {
           if (c.state !== "executing") return c;
-          const next = Math.min(c.cap, c.used + Math.random() * 0.08);
-          return { ...c, used: next };
-        })
-      );
+          
+          let updated = { ...c };
+          
+          // Update usage every ~1200ms (every interval)
+          if (usageCounter >= 1) {
+            const next = Math.min(c.cap, c.used + Math.random() * 0.08);
+            updated.used = next;
+          }
+          
+          // Update logs every ~1900ms (approximately every 1.6 intervals)
+          if (logCounter >= 2) {
+            const lines = [
+              { kind: "out" as const, text: "streaming chunk… 1.2kb" },
+              { kind: "out" as const, text: "tool: read_file(src/app/App.tsx)" },
+              { kind: "ok" as const, text: "applied patch · 6 lines" },
+              { kind: "out" as const, text: "linter: 0 errors, 1 warning" },
+            ];
+            const l = lines[Math.floor(Math.random() * lines.length)];
+            updated.log = [...c.log.slice(-9), l];
+          }
+          
+          return updated;
+        });
+      });
+      
+      // Reset counters
+      if (usageCounter >= 1) usageCounter = 0;
+      if (logCounter >= 2) logCounter = 0;
     }, 1200);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      const lines = [
-        { kind: "out" as const, text: "streaming chunk… 1.2kb" },
-        { kind: "out" as const, text: "tool: read_file(src/app/App.tsx)" },
-        { kind: "ok" as const, text: "applied patch · 6 lines" },
-        { kind: "out" as const, text: "linter: 0 errors, 1 warning" },
-      ];
-      setClis((prev) =>
-        prev.map((c) => {
-          if (c.state !== "executing") return c;
-          const l = lines[Math.floor(Math.random() * lines.length)];
-          return { ...c, log: [...c.log.slice(-9), l] };
-        })
-      );
-    }, 1900);
+    
     return () => clearInterval(id);
   }, []);
 
