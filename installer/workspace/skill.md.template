@@ -1,0 +1,334 @@
+# Project Skills & Capabilities
+
+> This file defines your project's technical stack, architecture, and coding standards.
+> The orchestrator shares this context with all AI CLIs automatically.
+
+**Last Updated**: {timestamp}
+
+---
+
+## 📚 Tech Stack
+
+### Frontend
+- **Framework**: React 18
+- **Language**: TypeScript 5.x
+- **Styling**: Tailwind CSS 3.x
+- **State Management**: Zustand
+- **Build Tool**: Vite
+- **UI Components**: shadcn/ui
+- **Icons**: Lucide React
+
+### Backend
+- **Framework**: FastAPI
+- **Language**: Python 3.11+
+- **Database**: PostgreSQL 15
+- **ORM**: SQLAlchemy 2.x
+- **API Style**: REST + WebSocket
+- **Authentication**: JWT
+- **Validation**: Pydantic
+
+### DevOps & Tools
+- **Containerization**: Docker
+- **CI/CD**: GitHub Actions
+- **Version Control**: Git
+- **Package Manager**: npm (frontend), pip (backend)
+- **Testing**: pytest (backend), Vitest (frontend)
+
+---
+
+## 🏗️ Architecture
+
+### Project Structure
+```
+project/
+├── frontend/              # React application
+│   ├── src/
+│   │   ├── components/   # React components
+│   │   ├── hooks/        # Custom hooks
+│   │   ├── stores/       # Zustand stores
+│   │   ├── types/        # TypeScript types
+│   │   └── utils/        # Utility functions
+│   └── public/           # Static assets
+│
+├── backend/              # FastAPI server
+│   ├── app/
+│   │   ├── api/         # API routes
+│   │   ├── models/      # Data models
+│   │   ├── services/    # Business logic
+│   │   ├── utils/       # Utilities
+│   │   └── cli_wrappers/# CLI integrations
+│   └── tests/           # Backend tests
+│
+├── shared/              # Shared resources
+│   ├── skill.md        # This file
+│   ├── plan.md         # Project plan
+│   └── sessions/       # Session history
+│
+└── docs/               # Documentation
+```
+
+### Design Patterns
+- **Component-based architecture** (React)
+- **Repository pattern** (Backend data access)
+- **Dependency injection** (FastAPI)
+- **Event-driven communication** (WebSocket)
+- **State management** (Zustand stores)
+
+### Communication Flow
+```
+User → React UI → WebSocket/REST → FastAPI → Orchestrator → AI CLIs
+                                                    ↓
+                                            Context Manager
+                                                    ↓
+                                            Session Manager
+```
+
+---
+
+## 💻 Coding Standards
+
+### TypeScript/React
+- Use **functional components** with hooks
+- Prefer **composition over inheritance**
+- Use **TypeScript strict mode**
+- Follow **Airbnb style guide**
+- Use **named exports** for components
+- Keep components **small and focused** (<200 lines)
+- Use **custom hooks** for reusable logic
+- Implement **proper error boundaries**
+
+### Python
+- Follow **PEP 8** style guide
+- Use **type hints** for all functions
+- Write **docstrings** for all public functions
+- Prefer **async/await** for I/O operations
+- Use **dataclasses** or **Pydantic models** for data
+- Keep functions **small and focused** (<50 lines)
+- Use **dependency injection** where appropriate
+
+### General Principles
+- **DRY** (Don't Repeat Yourself)
+- **KISS** (Keep It Simple, Stupid)
+- **YAGNI** (You Aren't Gonna Need It)
+- **SOLID** principles
+- Write **self-documenting code**
+- Use **meaningful variable names**
+- Comment **complex logic only**
+- Prefer **early returns** over nested conditions
+
+---
+
+## 🧪 Testing Strategy
+
+### Unit Tests
+- Test **business logic** in isolation
+- Mock **external dependencies**
+- Aim for **80%+ code coverage**
+- Use **descriptive test names**
+
+### Integration Tests
+- Test **API endpoints** end-to-end
+- Test **database operations**
+- Test **CLI integrations**
+- Use **test fixtures** for setup
+
+### E2E Tests
+- Test **critical user flows**
+- Test **error scenarios**
+- Test **edge cases**
+- Run in **CI/CD pipeline**
+
+### Test Organization
+```
+tests/
+├── unit/           # Unit tests
+├── integration/    # Integration tests
+└── e2e/           # End-to-end tests
+```
+
+---
+
+## 🎯 Performance Requirements
+
+### Frontend
+- **Initial load**: < 2 seconds
+- **Time to Interactive**: < 3 seconds
+- **Lighthouse score**: > 90
+- **Bundle size**: < 500KB (gzipped)
+
+### Backend
+- **API response time**: < 200ms (p95)
+- **WebSocket latency**: < 50ms
+- **Database queries**: < 100ms
+- **Concurrent users**: 100+
+
+### Optimization Techniques
+- Code splitting (frontend)
+- Lazy loading (components)
+- Database indexing
+- Query optimization
+- Caching strategies
+- Connection pooling
+
+---
+
+## 🔒 Security Practices
+
+### Authentication & Authorization
+- Use **JWT tokens** for authentication
+- Implement **role-based access control**
+- Store passwords with **bcrypt**
+- Use **HTTPS** in production
+
+### Input Validation
+- Validate **all user inputs**
+- Sanitize **SQL queries**
+- Use **Pydantic** for validation
+- Implement **rate limiting**
+
+### Data Protection
+- Encrypt **sensitive data**
+- Use **environment variables** for secrets
+- Never commit **API keys** or **passwords**
+- Implement **CORS** properly
+
+---
+
+## 📝 Documentation Standards
+
+### Code Documentation
+- Write **clear docstrings**
+- Document **complex algorithms**
+- Include **usage examples**
+- Keep docs **up-to-date**
+
+### API Documentation
+- Use **OpenAPI/Swagger**
+- Document **all endpoints**
+- Include **request/response examples**
+- Document **error codes**
+
+### README Files
+- Include **setup instructions**
+- Document **environment variables**
+- Provide **usage examples**
+- List **dependencies**
+
+---
+
+## 🔄 Git Workflow
+
+### Branch Strategy
+- `main` - Production-ready code
+- `develop` - Integration branch
+- `feature/*` - New features
+- `bugfix/*` - Bug fixes
+- `hotfix/*` - Production hotfixes
+
+### Commit Messages
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+**Types**: feat, fix, docs, style, refactor, test, chore
+
+### Pull Requests
+- Write **descriptive titles**
+- Include **context** in description
+- Link **related issues**
+- Request **code review**
+- Ensure **tests pass**
+
+---
+
+## 🚀 Deployment
+
+### Environments
+- **Development**: Local development
+- **Staging**: Pre-production testing
+- **Production**: Live environment
+
+### Deployment Process
+1. Run **all tests**
+2. Build **production bundles**
+3. Run **security scans**
+4. Deploy to **staging**
+5. Run **smoke tests**
+6. Deploy to **production**
+7. Monitor **metrics**
+
+---
+
+## 📊 Monitoring & Logging
+
+### Metrics to Track
+- Request count
+- Response times
+- Error rates
+- User activity
+- Resource usage
+
+### Logging Levels
+- **DEBUG**: Detailed information
+- **INFO**: General information
+- **WARNING**: Warning messages
+- **ERROR**: Error messages
+- **CRITICAL**: Critical issues
+
+### Log Format
+```json
+{
+  "timestamp": "2026-05-16T15:30:00Z",
+  "level": "INFO",
+  "service": "api",
+  "message": "Request processed",
+  "context": {...}
+}
+```
+
+---
+
+## 🔧 Development Tools
+
+### Required
+- Node.js 18+
+- Python 3.11+
+- Docker
+- Git
+
+### Recommended
+- VS Code
+- Postman/Insomnia
+- pgAdmin
+- Docker Desktop
+
+### VS Code Extensions
+- ESLint
+- Prettier
+- Python
+- GitLens
+- Thunder Client
+
+---
+
+## 📚 Resources
+
+### Documentation
+- [FastAPI Docs](https://fastapi.tiangolo.com/)
+- [React Docs](https://react.dev/)
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+- [Tailwind CSS](https://tailwindcss.com/docs)
+
+### Style Guides
+- [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript)
+- [PEP 8](https://peps.python.org/pep-0008/)
+- [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
+
+---
+
+*This is a living document. Update it as the project evolves.*
+*All AI CLIs will receive this context automatically.*

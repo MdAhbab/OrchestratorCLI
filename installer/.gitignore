@@ -1,0 +1,58 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# PyInstaller
+*.spec.bak
+*.manifest
+*.exe
+*.app
+*.dmg
+*.pkg
+
+# Temporary files
+temp_dmg/
+*.tmp
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Inno Setup
+Output/
+*.iss.bak
+
+# Node modules (if any)
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Test files
+test_*.py
+*_test.py
+
+# Made with Bob

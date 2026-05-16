@@ -1,0 +1,103 @@
+# AI CLI Orchestrator - Workspace Configuration
+# Generated: {timestamp}
+
+workspace:
+  name: "My AI Project"
+  version: "1.0.0"
+  created_at: "{timestamp}"
+  description: "AI-powered development workspace"
+  
+paths:
+  skill_md: "skill.md"
+  plan_md: "plan.md"
+  sessions: "sessions/"
+  logs: "logs/"
+
+server:
+  host: "127.0.0.1"
+  port: {port}
+  auto_launch_browser: true
+  log_level: "INFO"
+
+clis:
+  # Configured AI CLIs (populated after bootstrap)
+  enabled: []
+  
+  # Rate limit settings (requests per day)
+  rate_limits:
+    claude-code: 1000
+    ibm-bob: 500
+    gemini-cli: 2000
+    copilot-cli: 1500
+    codex-cli: 1000
+    deepseek: 800
+    cline: 600
+  
+  # Failover settings
+  failover:
+    enabled: true
+    retry_attempts: 3
+    retry_delay: 5  # seconds
+
+routing:
+  # Task routing preferences
+  specialties:
+    frontend: ["gemini-cli", "claude-code", "cline"]
+    backend: ["codex-cli", "ibm-bob", "deepseek"]
+    algorithm: ["codex-cli", "deepseek", "claude-code"]
+    refactoring: ["claude-code", "copilot-cli", "ibm-bob"]
+    documentation: ["claude-code", "gemini-cli"]
+    general: ["claude-code", "gemini-cli", "ibm-bob"]
+  
+  # Routing strategy
+  strategy: "specialty_first"  # Options: specialty_first, round_robin, least_used
+  
+  # Parallel execution settings
+  parallel:
+    enabled: true
+    max_concurrent: 3
+    min_task_size: 100  # lines of code
+
+monitoring:
+  # Real-time monitoring settings
+  enabled: true
+  update_interval: 1  # seconds
+  track_metrics: true
+  
+  # Metrics to track
+  metrics:
+    - "request_count"
+    - "response_time"
+    - "rate_limit_usage"
+    - "error_rate"
+    - "cli_availability"
+
+session:
+  # Session persistence settings
+  auto_save: true
+  checkpoint_interval: 300  # seconds (5 minutes)
+  max_history: 100  # tasks
+  compress_old_sessions: true
+  retention_days: 30
+
+context:
+  # Context synchronization settings
+  auto_sync: true
+  sync_on_switch: true
+  incremental_updates: true
+  compression: true
+  max_context_size: 1048576  # 1MB
+
+notifications:
+  # Notification settings
+  enabled: true
+  rate_limit_warnings: true
+  error_alerts: true
+  success_messages: false
+
+advanced:
+  # Advanced settings
+  debug_mode: false
+  verbose_logging: false
+  telemetry: true
+  auto_update_check: true

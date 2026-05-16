@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "release_date": "2026-05-16",
+  "build_number": 1,
+  "release_notes": "Initial release of AI CLI Orchestrator",
+  "min_requirements": {
+    "windows": {
+      "os": "Windows 10 or later",
+      "architecture": "x64",
+      "disk_space_mb": 500,
+      "ram_mb": 2048
+    },
+    "macos": {
+      "os": "macOS 10.15 or later",
+      "architecture": "x64 or arm64",
+      "disk_space_mb": 500,
+      "ram_mb": 2048
+    }
+  }
+}

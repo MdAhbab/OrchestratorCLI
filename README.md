@@ -1,468 +1,394 @@
-# 🤖 AI CLI Orchestrator
+# AI CLI Orchestrator
 
-> **Intelligent orchestration of multiple AI coding assistants for seamless, uninterrupted development**
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![React 18](https://img.shields.io/badge/react-18-blue.svg)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/typescript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-
-**IBM BOB Hackathon Project** - Solving the multi-CLI management nightmare
+A unified interface for managing multiple AI CLI tools with smart dependency management and automatic workspace initialization.
 
 ---
 
-## 🎯 The Problem
+## 🎯 Project Overview
 
-As developers using multiple AI coding assistants (IBM BOB, Gemini CLI, Copilot CLI, Claude Code, Codex CLI, DeepSeek CLI, Kimi Code, Cline CLI), we face several critical challenges:
+This project consists of two main components:
 
-### 😤 Pain Points
+### 1. **Downloader Page** (`downloader_page/`)
+Public-facing website where users download the installer.
+- React + TypeScript frontend
+- FastAPI backend
+- Automatic installer detection
+- Download distribution system
 
-1. **Rate Limit Frustration**
-   - Hit daily/weekly limits unexpectedly
-   - Manual switching wastes 2-5 minutes each time
-   - No visibility into remaining quota
-   - Limits reset at different times
-
-2. **Context Re-feeding Hell**
-   - Must re-explain project to each CLI
-   - 10+ minutes wasted per switch
-   - Risk of inconsistent context
-   - Mental overhead tracking what each CLI knows
-
-3. **Inefficient Resource Usage**
-   - Some CLIs idle while others are rate-limited
-   - No awareness of CLI specialties
-   - Sequential usage instead of parallel
-   - ~30% quota wasted
-
-4. **Workflow Interruptions**
-   - Manual switching breaks flow state
-   - Context loss during transitions
-   - No session persistence
-   - 15-20 minutes to regain focus
-
-### 💡 Our Solution
-
-**AI CLI Orchestrator** - An intelligent system that:
-- ✅ Automatically detects and switches CLIs before rate limits hit
-- ✅ Maintains shared context across all CLIs (zero redundancy)
-- ✅ Routes tasks to optimal CLI based on specialty
-- ✅ Enables parallel execution across multiple CLIs
-- ✅ Persists sessions with YAML for seamless recovery
-- ✅ Provides real-time monitoring dashboard
+### 2. **Installer Builder** (`installer/`)
+Tools and scripts that BUILD the actual installer executables.
+- PyInstaller packaging
+- Windows installer (Inno Setup)
+- macOS installer (DMG)
+- Smart CLI bootstrapper
+- Workspace initialization
 
 ---
 
-## 🚀 Key Features
+## 🚀 Quick Start
 
-### 1. Automatic Rate Limit Management
-- Real-time monitoring of all CLI usage
-- Predictive switching before limits hit (90%+ accuracy)
-- Seamless failover in <5 seconds
-- Dashboard showing quota status for all CLIs
+### Run Downloader Page
 
-### 2. Unified Context Management
-- Single source of truth ([`skill.md`](shared/skill.md), [`plan.md`](shared/plan.md))
-- Automatic synchronization across CLIs
-- Incremental updates (send only changes)
-- Context sync in <2 seconds
-
-### 3. Intelligent Task Routing
-- Specialty-based routing (backend → Codex, frontend → Gemini)
-- Task classification using NLP patterns
-- Load balancing across available CLIs
-- Manual override option
-
-### 4. Session Persistence
-- YAML-based session storage
-- Complete state recovery after crashes
-- Session history and replay
-- Multi-project support
-
-### 5. Real-time Monitoring
-- Live terminal output from all CLIs
-- Usage metrics and analytics
-- Rate limit status indicators
-- Performance graphs
-
-### 6. Parallel Execution
-- Run multiple CLIs simultaneously
-- Shared context keeps them aligned
-- 2-3x faster for multi-domain tasks
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    React TypeScript UI                       │
-│         Dashboard | Terminal Viewer | Analytics              │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                    WebSocket + REST API
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│                    FastAPI Backend                           │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │           Orchestration Engine                       │   │
-│  │    Router | Monitor | Session Manager               │   │
-│  └──────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │           CLI Abstraction Layer                      │   │
-│  │    BOB | Gemini | Codex | Claude | DeepSeek ...     │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│              Multiple Terminal Instances                     │
-│    Terminal 1 | Terminal 2 | Terminal 3 | Terminal 4        │
-└─────────────────────────────────────────────────────────────┘
+**Windows (Easiest):**
+```bash
+cd downloader_page
+start.bat
 ```
 
-For detailed architecture, see [`TECHNICAL_ARCHITECTURE.md`](TECHNICAL_ARCHITECTURE.md)
+**Manual:**
+```bash
+# Terminal 1 - Frontend
+cd downloader_page
+npm run dev
+
+# Terminal 2 - Backend
+cd downloader_page/backend
+python run.py
+```
+
+**Access:**
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000
+
+### Build Installers
+
+```bash
+cd installer
+
+# Build all platforms
+python build.py --all
+
+# Build specific platform
+python build.py --windows
+python build.py --macos
+```
 
 ---
 
 ## 📦 Installation
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Git
-
-### Quick Start
-
+### Downloader Page Setup:
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/ai-cli-orchestrator.git
-cd ai-cli-orchestrator
-
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Frontend setup
-cd ../frontend
+cd downloader_page
 npm install
-
-# Configure CLIs (copy and edit)
-cp .env.example .env
-# Add your API keys and CLI configurations
-
-# Run backend
-cd backend
-uvicorn app.main:app --reload
-
-# Run frontend (in new terminal)
-cd frontend
-npm run dev
+pip install -r backend/requirements.txt
 ```
 
-Visit `http://localhost:5173` to access the dashboard.
-
----
-
-## 🔧 Configuration
-
-### CLI Configuration
-
-Edit [`backend/config/cli_config.yaml`](backend/config/cli_config.yaml):
-
-```yaml
-cli_tools:
-  - name: "IBM BOB"
-    slug: "bob"
-    command: "bob"
-    rate_limits:
-      daily: 1000
-      hourly: 100
-    specialties:
-      - "general"
-      - "planning"
-    priority: 1
-    
-  - name: "Gemini CLI"
-    slug: "gemini"
-    command: "gemini"
-    rate_limits:
-      daily: 1500
-      hourly: 150
-    specialties:
-      - "frontend"
-      - "ui"
-    priority: 2
-```
-
-### Environment Variables
-
-Create `.env` file:
-
+### Installer Setup:
 ```bash
-# API Keys
-IBM_BOB_API_KEY=your_key_here
-GEMINI_API_KEY=your_key_here
-COPILOT_API_KEY=your_key_here
-CLAUDE_API_KEY=your_key_here
-CODEX_API_KEY=your_key_here
-DEEPSEEK_API_KEY=your_key_here
-KIMI_API_KEY=your_key_here
-CLINE_API_KEY=your_key_here
-
-# Backend
-BACKEND_HOST=localhost
-BACKEND_PORT=8000
-
-# Frontend
-VITE_API_URL=http://localhost:8000
-VITE_WS_URL=ws://localhost:8000/ws
+cd installer
+pip install -r backend/requirements.txt
 ```
 
 ---
 
-## 📖 Usage
+## 📁 Project Structure
 
-### Basic Usage
-
-1. **Start the orchestrator**
-   ```bash
-   # Backend
-   uvicorn app.main:app --reload
-   
-   # Frontend
-   npm run dev
-   ```
-
-2. **Create a new session**
-   - Open dashboard at `http://localhost:5173`
-   - Click "New Session"
-   - Enter project name
-   - Configure [`skill.md`](shared/skill.md) and [`plan.md`](shared/plan.md)
-
-3. **Execute tasks**
-   - Enter your prompt in the input field
-   - Orchestrator automatically selects optimal CLI
-   - Watch real-time execution in terminal viewer
-   - Automatic failover if rate limit hit
-
-### Advanced Usage
-
-#### Parallel Execution
-```python
-# Execute multiple tasks simultaneously
-tasks = [
-    {"prompt": "Create React component", "type": "frontend"},
-    {"prompt": "Build API endpoint", "type": "backend"}
-]
-
-results = await orchestrator.execute_parallel(tasks)
 ```
-
-#### Manual CLI Selection
-```python
-# Force specific CLI
-result = await orchestrator.execute_task(
-    prompt="Your task here",
-    preferred_cli="codex"
-)
-```
-
-#### Session Recovery
-```python
-# Load previous session
-session = await session_manager.load_session("sess_20260515_001")
-await orchestrator.resume_session(session)
+BOB/
+│
+├── downloader_page/              # Download website
+│   ├── src/                      # React frontend
+│   ├── backend/                  # FastAPI backend
+│   ├── downloads/                # Installer files
+│   ├── start.bat                 # Quick start script
+│   └── README.md                 # Full documentation
+│
+├── installer/                    # Installer builder
+│   ├── backend/                  # App to package
+│   ├── bootstrapper/             # CLI dependency manager
+│   ├── windows/                  # Windows installer scripts
+│   ├── macos/                    # macOS installer scripts
+│   ├── workspace/                # User workspace templates
+│   ├── build.py                  # Main build script
+│   └── README.md                 # Build documentation
+│
+├── backend/                      # Main application backend
+│   └── app/
+│       └── main.py
+│
+├── frontend/                     # Main application frontend
+│   └── src/
+│
+├── shared/                       # Shared resources
+│   ├── skill.md
+│   └── sessions/
+│
+├── PROJECT_STRUCTURE.md          # Detailed structure explanation
+├── README.md                     # This file
+└── LICENSE
 ```
 
 ---
 
-## 📊 Performance Metrics
+## 🔄 Complete Workflow
 
-### Time Savings
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| CLI Switching Time | 2-5 min | 5 sec | **96% faster** |
-| Context Re-feeding | 10 min | 2 sec | **99% faster** |
-| Rate Limit Discovery | 5 min | 0 sec | **100% eliminated** |
-| Daily Time Wasted | 85 min | <1 min | **98% reduction** |
-
-### Resource Efficiency
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| CLI Utilization | 25% | 70% | **280% increase** |
-| Quota Waste | 30% | <5% | **83% reduction** |
-| Parallel Tasks | 1 | 2-3 | **200-300% faster** |
-
----
-
-## 🧪 Testing
-
+### 1. Build Installers
 ```bash
-# Backend tests
-cd backend
-pytest tests/ -v --cov=app
-
-# Frontend tests
-cd frontend
-npm test
-
-# Integration tests
-pytest tests/integration/ -v
-
-# E2E tests
-npm run test:e2e
+cd installer
+python build.py --all
 ```
+**Output:** `installer/dist/AI-CLI-Orchestrator-Setup.exe` and `.dmg`
+
+### 2. Copy to Downloads
+```bash
+cp installer/dist/*.exe downloader_page/downloads/
+cp installer/dist/*.dmg downloader_page/downloads/
+```
+
+### 3. Run Downloader Page
+```bash
+cd downloader_page
+start.bat
+```
+
+### 4. Users Download
+- Visit: http://localhost:8000
+- Click download button
+- Install on their machine
+
+---
+
+## 🎯 Key Features
+
+### Downloader Page
+- ✅ Modern React UI with dark theme
+- ✅ Responsive design (mobile/tablet/desktop)
+- ✅ Automatic installer detection
+- ✅ Dynamic download availability
+- ✅ File size display
+- ✅ REST API for version info
+- ✅ Hot reload in development
+
+### Installer System
+- ✅ PyInstaller packaging
+- ✅ Windows installer (Inno Setup)
+- ✅ macOS installer (DMG)
+- ✅ Smart CLI bootstrapper
+- ✅ Automatic dependency management
+- ✅ Workspace initialization
+- ✅ Cross-platform support
 
 ---
 
 ## 📚 Documentation
 
-- [**Hackathon Plan**](HACKATHON_PLAN.md) - Complete project plan and timeline
-- [**Technical Architecture**](TECHNICAL_ARCHITECTURE.md) - Detailed system design
-- [**Problem Analysis**](PROBLEM_ANALYSIS.md) - In-depth problem breakdown
-- [**Implementation Roadmap**](IMPLEMENTATION_ROADMAP.md) - Day-by-day development plan
-- [**API Documentation**](docs/API.md) - REST API reference
-- [**User Guide**](docs/USER_GUIDE.md) - Complete usage guide
+### Main Documentation
+- [`README.md`](README.md) - This file (project overview)
+- [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md) - Detailed structure explanation
+- [`LICENSE`](LICENSE) - MIT License
+
+### Component Documentation
+- [`downloader_page/README.md`](downloader_page/README.md) - Complete downloader page guide (438 lines)
+- [`installer/README.md`](installer/README.md) - Installer build documentation
+- [`downloader_page/downloads/README.md`](downloader_page/downloads/README.md) - Installer files info
 
 ---
 
-## 🎬 Demo
+## 🛠️ Development
 
-### Demo Scenarios
+### Downloader Page Development
+```bash
+cd downloader_page
 
-1. **Automatic Failover**
-   - Start task with IBM BOB
-   - Simulate rate limit
-   - Watch automatic switch to Gemini
-   - Task continues seamlessly
+# Frontend (hot reload)
+npm run dev
 
-2. **Specialty Routing**
-   - Request frontend component → Routes to Gemini
-   - Request backend API → Routes to Codex
-   - Parallel execution in different terminals
+# Backend (auto-reload)
+cd backend && python run.py
 
-3. **Session Recovery**
-   - Simulate crash/interruption
-   - Restart orchestrator
-   - Automatic session recovery
-   - Continue from last checkpoint
+# Production build
+npm run build
+npm run backend
+```
 
-### Demo Video
-[Link to demo video]
+### Installer Development
+```bash
+cd installer
+
+# Test build
+python build.py --windows
+
+# Check output
+ls dist/
+```
 
 ---
 
-## 🛠️ Technology Stack
+## 🌐 URLs
 
-### Backend
-- **FastAPI** - Modern Python web framework
-- **Pydantic** - Data validation
-- **PyYAML** - YAML parsing
-- **asyncio** - Async operations
-- **websockets** - Real-time communication
+### Downloader Page
+- Frontend Dev: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/api/docs
+- Version Info: http://localhost:8000/api/version
 
-### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **Zustand** - State management
-- **xterm.js** - Terminal emulator
-- **Recharts** - Analytics visualization
-- **Tailwind CSS** - Styling
+---
+
+## 🔧 Tech Stack
+
+### Downloader Page
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS 4, shadcn/ui
+- **Backend**: FastAPI, Uvicorn, Python 3.8+
+
+### Installer
+- **Packaging**: PyInstaller
+- **Windows**: Inno Setup
+- **macOS**: DMG tools
+- **Bootstrapper**: Python, npm
+
+---
+
+## 📝 Common Tasks
+
+### Start Everything
+```bash
+cd downloader_page
+start.bat
+```
+
+### Build New Installer
+```bash
+cd installer
+python build.py --windows
+cp dist/*.exe ../downloader_page/downloads/
+```
+
+### Deploy Downloader Page
+```bash
+cd downloader_page
+npm run build
+# Upload dist/ and backend/ to server
+```
+
+### Update Version
+1. Edit `installer/version.json`
+2. Edit `downloader_page/backend/main.py`
+3. Rebuild installers
+4. Copy to downloads folder
+
+---
+
+## 🐛 Troubleshooting
+
+### Downloader Page Issues
+See [`downloader_page/README.md`](downloader_page/README.md#troubleshooting)
+
+### Installer Build Issues
+See [`installer/README.md`](installer/README.md)
+
+### Common Problems
+
+**Port already in use:**
+```bash
+# Windows
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+```
+
+**Dependencies not installed:**
+```bash
+# Downloader page
+cd downloader_page
+npm install
+pip install -r backend/requirements.txt
+
+# Installer
+cd installer
+pip install -r backend/requirements.txt
+```
+
+**Downloads not working:**
+1. Check backend is running
+2. Check files exist in `downloader_page/downloads/`
+3. Check file names match exactly
+4. Visit http://localhost:8000/api/version
+
+---
+
+## 🔒 Security
+
+### Windows SmartScreen Warning
+Downloaded `.exe` files show security warnings because they're not digitally signed.
+
+**To fix:**
+1. Get code signing certificate
+2. Sign installer with `signtool.exe`
+3. Build reputation with Microsoft
+
+### Production Checklist
+- [ ] Sign installers
+- [ ] Restrict CORS origins
+- [ ] Enable HTTPS
+- [ ] Add rate limiting
+- [ ] Generate checksums
+- [ ] Monitor logs
+
+---
+
+## 🚢 Deployment
+
+### Downloader Page
+See [`downloader_page/README.md#deployment`](downloader_page/README.md#deployment)
+
+### Installer Distribution
+1. Build installers
+2. Copy to `downloader_page/downloads/`
+3. Deploy downloader page
+4. Users download from website
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Setup
-
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'feat: add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ---
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🏆 Hackathon Information
-
-**Event:** IBM BOB Hackathon  
-**Team:** [Your Team Name]  
-**Category:** Developer Tools  
-**Duration:** 2 weeks  
-
-### Judges' Highlights
-
-1. **Innovation** - First-of-its-kind multi-CLI orchestration
-2. **Real Problem** - Solves actual developer pain points
-3. **Measurable Impact** - 98% time savings, 280% efficiency gain
-4. **Technical Excellence** - Robust architecture, comprehensive testing
-5. **Scalability** - Easily extensible to more CLIs
+MIT License - See LICENSE file for details
 
 ---
 
-## 🙏 Acknowledgments
+## 🆘 Support
 
-- IBM BOB team for the amazing CLI tool
-- All AI CLI providers (Gemini, Copilot, Claude, Codex, DeepSeek, Kimi, Cline)
-- Open source community for excellent libraries
-- Hackathon organizers and judges
-
----
-
-## 📞 Contact
-
-- **Project Lead:** [Your Name]
-- **Email:** your.email@example.com
-- **GitHub:** [@yourusername](https://github.com/yourusername)
-- **LinkedIn:** [Your LinkedIn](https://linkedin.com/in/yourprofile)
+- **Documentation**: Check README files in each directory
+- **Issues**: Create a GitHub issue
+- **API Docs**: Visit http://localhost:8000/api/docs
 
 ---
 
-## 🗺️ Roadmap
+## 📊 Project Status
 
-### Phase 1: MVP (Hackathon - 2 weeks) ✅
-- Core orchestration
-- 8 CLI integrations
-- Basic UI dashboard
-- Session management
+### ✅ Completed
+- Downloader page (frontend + backend)
+- Installer build system
+- Windows installer (Inno Setup)
+- macOS installer (DMG)
+- Smart CLI bootstrapper
+- Workspace initialization
+- Documentation
+- Download functionality
+- API integration
 
-### Phase 2: Enhancement (Month 2)
-- Machine learning routing
-- Advanced analytics
-- Plugin system
-- Mobile app
+### 🔄 In Progress
+- Real installer testing
+- Code signing
+- Release workflow
 
-### Phase 3: Scale (Months 3-6)
-- Cloud deployment
-- Enterprise features
-- Community plugins
-- API marketplace
-
----
-
-## ⭐ Star History
-
-If you find this project useful, please consider giving it a star! ⭐
+### 📋 Planned
+- Linux installer (AppImage)
+- Automated testing
+- CI/CD pipeline
+- Analytics dashboard
 
 ---
 
-<div align="center">
+**Built with ❤️ for developers who use multiple AI CLI tools**
 
-**Built with ❤️ for the IBM BOB Hackathon**
-
-[Documentation](docs/) • [Report Bug](issues) • [Request Feature](issues)
-
-</div>
+Last Updated: 2026-05-16

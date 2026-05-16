@@ -1,0 +1,117 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-05-16",
+  "clis": [
+    {
+      "name": "Claude Code",
+      "slug": "claude-code",
+      "package": "@anthropic-ai/claude-code",
+      "install_command": "npm install -g @anthropic-ai/claude-code",
+      "verify_command": "claude-code --version",
+      "required": true,
+      "priority": 1,
+      "description": "Anthropic's Claude AI coding assistant",
+      "specialties": ["general", "refactoring", "documentation"],
+      "rate_limits": {
+        "daily": 1000,
+        "hourly": 100
+      }
+    },
+    {
+      "name": "IBM BOB",
+      "slug": "ibm-bob",
+      "package": "@ibm/bob-cli",
+      "install_command": "npm install -g @ibm/bob-cli",
+      "verify_command": "bob --version",
+      "required": true,
+      "priority": 2,
+      "description": "IBM's BOB AI coding assistant",
+      "specialties": ["backend", "enterprise", "general"],
+      "rate_limits": {
+        "daily": 500,
+        "hourly": 50
+      }
+    },
+    {
+      "name": "Gemini CLI",
+      "slug": "gemini-cli",
+      "package": "@google/gemini-cli",
+      "install_command": "npm install -g @google/gemini-cli",
+      "verify_command": "gemini --version",
+      "required": false,
+      "priority": 3,
+      "description": "Google's Gemini AI coding assistant",
+      "specialties": ["frontend", "ui", "design"],
+      "rate_limits": {
+        "daily": 2000,
+        "hourly": 200
+      }
+    },
+    {
+      "name": "GitHub Copilot CLI",
+      "slug": "copilot-cli",
+      "package": "@github/copilot-cli",
+      "install_command": "npm install -g @github/copilot-cli",
+      "verify_command": "copilot --version",
+      "required": false,
+      "priority": 4,
+      "description": "GitHub Copilot command-line interface",
+      "specialties": ["general", "refactoring"],
+      "rate_limits": {
+        "daily": 1500,
+        "hourly": 150
+      }
+    },
+    {
+      "name": "Codex CLI",
+      "slug": "codex-cli",
+      "package": "@openai/codex-cli",
+      "install_command": "npm install -g @openai/codex-cli",
+      "verify_command": "codex --version",
+      "required": false,
+      "priority": 5,
+      "description": "OpenAI Codex coding assistant",
+      "specialties": ["backend", "algorithm", "optimization"],
+      "rate_limits": {
+        "daily": 1000,
+        "hourly": 100
+      }
+    },
+    {
+      "name": "DeepSeek",
+      "slug": "deepseek",
+      "package": "@deepseek/cli",
+      "install_command": "npm install -g @deepseek/cli",
+      "verify_command": "deepseek --version",
+      "required": false,
+      "priority": 6,
+      "description": "DeepSeek AI coding assistant",
+      "specialties": ["algorithm", "optimization", "backend"],
+      "rate_limits": {
+        "daily": 800,
+        "hourly": 80
+      }
+    },
+    {
+      "name": "Cline",
+      "slug": "cline",
+      "package": "@cline/cli",
+      "install_command": "npm install -g @cline/cli",
+      "verify_command": "cline --version",
+      "required": false,
+      "priority": 7,
+      "description": "Cline AI coding assistant",
+      "specialties": ["general", "frontend"],
+      "rate_limits": {
+        "daily": 600,
+        "hourly": 60
+      }
+    }
+  ],
+  "installation_notes": {
+    "node_required": "Node.js 18+ and npm are required to install AI CLI tools",
+    "global_install": "All CLIs are installed globally using npm",
+    "authentication": "Some CLIs may require API keys or authentication after installation",
+    "fallback": "If automatic installation fails, manual installation instructions will be provided"
+  }
+}
