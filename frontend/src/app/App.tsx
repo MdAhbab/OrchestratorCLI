@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Loader } from "./components/Loader";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
-import { ChatView, INITIAL_MSGS, type Msg } from "./components/ChatView";
+import { ChatView, INITIAL_MSGS, type Division, type Msg } from "./components/ChatView";
 import { ProcessesView } from "./components/ProcessesView";
 import { ThemeProvider } from "./components/theme";
 import { StoreProvider, useStore } from "./components/store";
@@ -47,6 +47,23 @@ function providerLook(id: string) {
   );
 }
 
+function applyDivisionsToAgents(clis: CliRuntime[], divisions: Division[]): CliRuntime[] {
+  if (!divisions.length) return clis;
+  return clis.map((cli) => {
+    const division = divisions.find(
+      (d) =>
+        d.short === cli.id ||
+        d.agent.toLowerCase() === cli.name.toLowerCase()
+    );
+    if (!division) return { ...cli, task: undefined, state: cli.runtimeId ? "executing" : "idle" };
+    return {
+      ...cli,
+      task: division.task,
+      state: division.status === "done" ? "idle" : "executing",
+    };
+  });
+}
+
 function Shell() {
   const { onboarded, setOnboarded, providers: prefProviders } = useStore();
   const [loading, setLoading] = useState(true);
@@ -88,6 +105,7 @@ function Shell() {
           thinking: meta?.thinking || [],
           divisions: meta?.divisions || [],
           artifacts: meta?.artifacts || [],
+          model: meta?.model,
         };
       });
       setMsgs(mapped);
@@ -145,8 +163,14 @@ function Shell() {
           content: data.content,
           thinking: data.metadata?.thinking || [],
           divisions: data.metadata?.divisions || [],
-          artifacts: data.metadata?.artifacts || []
+          artifacts: data.metadata?.artifacts || [],
+          model: data.metadata?.model,
         };
+        const divisions = (data.metadata?.divisions || []) as Division[];
+        if (divisions.length > 0) {
+          setClis((prev) => applyDivisionsToAgents(prev, divisions));
+          setView("processes");
+        }
         setMsgs((m) => [...m, reply]);
       } else {
         const detail = await parseApiError(res);
@@ -202,14 +226,18 @@ function Shell() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [provRes, activeRes, usageRes] = await Promise.all([
-          fetch(apiPath("/providers?enabled_only=true")),
-          apiFetch("/runtimes/live"),
-          fetch(apiPath("/analytics/usage?days=1")).catch(() => null),
-        ]);
+        const provRes = await fetch(apiPath("/providers?enabled_only=true"));
+        const activeRes = await apiFetch("/runtimes/live").catch((err) => {
+          console.warn("Failed to load live runtimes:", err);
+          return null;
+        });
+        const usageRes = await fetch(apiPath("/analytics/usage?days=1")).catch((err) => {
+          console.warn("Failed to load usage analytics:", err);
+          return null;
+        });
         if (cancelled) return;
         const provJson = provRes.ok ? await provRes.json() : { providers: [] };
-        const activeJson = activeRes.ok ? await activeRes.json() : { runtimes: [] };
+        const activeJson = activeRes?.ok ? await activeRes.json() : { runtimes: [] };
         const usageJson = usageRes && usageRes.ok ? await usageRes.json() : null;
 
         const activeByProvider = new Map<number, any>();
@@ -246,7 +274,17 @@ function Shell() {
               cap,
             };
           });
-        setClis(next);
+        setClis((prev) =>
+          next.map((cli) => {
+            const existing = prev.find((c) => c.id === cli.id);
+            if (!existing?.task) return cli;
+            return {
+              ...cli,
+              task: existing.task,
+              state: cli.runtimeId || existing.state === "executing" ? "executing" : cli.state,
+            };
+          })
+        );
       } catch (err) {
         console.error("Failed to load enabled providers:", err);
         setClis([]);

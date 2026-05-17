@@ -63,6 +63,32 @@ const stateMap = {
 
 type WsStatus = "connecting" | "open" | "closed" | "error" | "spawning";
 
+function psQuote(value: string) {
+  return `'${value.replace(/\r?\n/g, " ").replace(/'/g, "''")}'`;
+}
+
+function commandForAssignedTask(cli: CliRuntime) {
+  const task = psQuote(cli.task ?? "");
+  switch (cli.id) {
+    case "claude":
+      return `claude -p ${task}\r`;
+    case "gemini":
+      return `gemini -p ${task}\r`;
+    case "codex":
+      return `codex exec ${task}\r`;
+    case "copilot":
+      return `gh copilot suggest ${task}\r`;
+    case "deepseek":
+      return `deepseek ${task}\r`;
+    case "kimi":
+      return `kimi ${task}\r`;
+    case "cline":
+      return `cline ${task}\r`;
+    default:
+      return `Write-Host ${psQuote(`[bob] Assigned task: ${cli.task ?? ""}`)}\r`;
+  }
+}
+
 export function TerminalCard({
   cli,
   defaultMenuOpen = false,
@@ -90,6 +116,7 @@ export function TerminalCard({
   const fitRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sendBufRef = useRef<string>(""); // input line buffer for the Send button
+  const assignedTaskSentRef = useRef<string | null>(null);
   const cardInputRef = useRef<HTMLInputElement | null>(null);
 
   const s = stateMap[cli.state];
@@ -256,6 +283,24 @@ export function TerminalCard({
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: "input", data: text }));
   };
+
+  const dispatchAssignedTask = (force = false) => {
+    const task = cli.task?.trim();
+    if (!task) return;
+    if (!force && assignedTaskSentRef.current === task) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    assignedTaskSentRef.current = task;
+    const command = commandForAssignedTask(cli);
+    termRef.current?.writeln(`\r\n\x1b[36m[bob] dispatching assigned task to ${cli.name}\x1b[0m`);
+    sendInput(command);
+  };
+
+  useEffect(() => {
+    if (wsStatus === "open") {
+      dispatchAssignedTask(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cli.task, wsStatus]);
 
   const handleSendButton = () => {
     const v = (cardInputRef.current?.value ?? "").trim();
@@ -446,9 +491,18 @@ export function TerminalCard({
 
       {cli.task && (
         <div className="border-b border-zinc-200/70 bg-indigo-50/30 px-4 py-1.5 dark:border-white/[0.05] dark:bg-indigo-400/[0.04]">
-          <div className="flex items-center gap-1.5 font-mono text-[10px]">
-            <span className="text-zinc-500">assigned:</span>
-            <span className="truncate text-indigo-700 dark:text-indigo-300">{cli.task}</span>
+          <div className="flex items-center gap-2 font-mono text-[10px]">
+            <span className="shrink-0 text-zinc-500">assigned:</span>
+            <span className="min-w-0 flex-1 truncate text-indigo-700 dark:text-indigo-300">{cli.task}</span>
+            <button
+              onClick={() => dispatchAssignedTask(true)}
+              disabled={wsStatus !== "open"}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-indigo-200/70 bg-white px-1.5 py-0.5 text-[9.5px] text-indigo-700 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-indigo-400/20 dark:bg-white/[0.03] dark:text-indigo-300 dark:hover:bg-indigo-400/10"
+              title="Send assigned task to this terminal"
+            >
+              <Send className="h-2.5 w-2.5" />
+              Dispatch
+            </button>
           </div>
         </div>
       )}

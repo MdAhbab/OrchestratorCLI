@@ -216,7 +216,7 @@ type Ctx = AppState & {
   setPrefs: React.Dispatch<React.SetStateAction<Prefs>>;
   pushSession: (s: SessionEntry) => void;
   clearSessions: () => void;
-  reset: () => void;
+  reset: () => Promise<void>;
 };
 
 const StoreCtx = createContext<Ctx | null>(null);
@@ -647,11 +647,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         pushSession: (entry) =>
           setState((s) => ({ ...s, sessions: [entry, ...s.sessions].slice(0, 100) })),
         clearSessions: () => setState((s) => ({ ...s, sessions: [] })),
-        reset: () => {
+        reset: async () => {
           try {
             localStorage.removeItem(KEY);
           } catch {}
-          setState({ ...DEFAULT_STATE, sessions: [] });
+          const resetState = {
+            ...DEFAULT_STATE,
+            onboarded: false,
+            workspace: null,
+            sessions: [],
+          };
+          setState(resetState);
+          try {
+            await fetch(apiPath("/settings"), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                preferences: toBackendPreferences(resetState),
+              }),
+            });
+          } catch {
+            // Local reset still works; backend will be overwritten on the next successful sync.
+          }
+          window.location.reload();
         },
       }}
     >

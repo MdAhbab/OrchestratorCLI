@@ -743,7 +743,7 @@ function PrivacyPanel() {
         <Row title="Reset everything" desc="Wipe local state and walk through onboarding again">
           <button
             onClick={() => {
-              if (confirm("Reset Orchestrator to defaults? This will re-run onboarding.")) reset();
+              if (confirm("Reset Orchestrator to defaults? This will re-run onboarding.")) void reset();
             }}
             className="flex items-center gap-1 rounded-md border border-rose-300/40 bg-rose-50 px-2.5 py-1.5 text-[11.5px] text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/[0.08] dark:text-rose-300"
           >

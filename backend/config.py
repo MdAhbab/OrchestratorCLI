@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     cors_allow_methods: Annotated[List[str], NoDecode] = ["*"]
     cors_allow_headers: Annotated[List[str], NoDecode] = ["*"]
 
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_bool(cls, v: Any) -> Any:
+        """Treat non-boolean build labels such as DEBUG=release as production."""
+        if isinstance(v, str) and v.strip().lower() in {"release", "production", "prod"}:
+            return False
+        return v
+
     @field_validator('cors_origins', 'cors_allow_methods', 'cors_allow_headers', mode='before')
     @classmethod
     def parse_comma_separated_list(cls, v: Any) -> List[str]:

@@ -35,7 +35,7 @@ import {
 import { useStore, type AuthMethod, type Provider } from "./store";
 import { useTheme } from "./theme";
 import { OrchestratorLogo } from "./OrchestratorLogo";
-import { apiPath } from "../lib/api";
+import { apiFetch, isAbortError } from "../lib/api";
 import { CliInstallHint } from "./CliInstallHint";
 
 const RECENT_FOLDERS = [
@@ -188,9 +188,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         };
       }
 
-      const res = await fetch(apiPath("/onboarding/complete"), {
+      const res = await apiFetch("/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 15_000,
         body: JSON.stringify({
           workspace: {
             path: workspacePath,
@@ -222,7 +223,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     } catch (err) {
       console.error("onboarding persist failed:", err);
       setFinishError(
-        "Could not reach the backend. Start it with: python run.py (backend should listen on port 8000)."
+        isAbortError(err)
+          ? "Saving timed out. The backend did not answer within 15 seconds. Restart it with: python run.py --no-reload"
+          : "Could not reach the backend. Start it with: python run.py (backend should listen on port 8000)."
       );
       return;
     } finally {

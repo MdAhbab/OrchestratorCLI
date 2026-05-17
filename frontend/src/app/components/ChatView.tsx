@@ -30,6 +30,7 @@ export type Msg = {
   thinking?: string[];
   divisions?: Division[];
   artifacts?: { name: string; kind: string }[];
+  model?: string;
 };
 
 export const INITIAL_MSGS: Msg[] = [];
@@ -257,7 +258,9 @@ function MessageBubble({ m, onOpenProcesses }: { m: Msg; onOpenProcesses: () => 
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-baseline gap-2">
           <span className="text-[12.5px] text-zinc-900 dark:text-white">Orchestrator</span>
-          <span className="font-mono text-[9.5px] text-zinc-500">granite-3.2 · ibm-cloud</span>
+          <span className="font-mono text-[9.5px] text-zinc-500">
+            {m.model ?? "granite-3.2 · ibm-cloud"}
+          </span>
           <span className="font-mono text-[9.5px] text-zinc-400">{m.ts}</span>
         </div>
         <div className="text-[13.5px] leading-relaxed text-zinc-700 dark:text-zinc-300">
@@ -265,7 +268,7 @@ function MessageBubble({ m, onOpenProcesses }: { m: Msg; onOpenProcesses: () => 
         </div>
 
         {m.thinking && <ThinkingPanel items={m.thinking} />}
-        {m.divisions && <DivisionsPanel divs={m.divisions} />}
+        {m.divisions && m.divisions.length > 0 && <DivisionsPanel divs={m.divisions} />}
 
         {m.artifacts && m.artifacts.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">

@@ -10,6 +10,21 @@ const normalizedApiBase = normalizedApiBaseRaw.endsWith('/') && normalizedApiBas
   ? normalizedApiBaseRaw.slice(0, -1)
   : normalizedApiBaseRaw
 
+const backendProxy = {
+  target: backendTarget,
+  changeOrigin: true,
+  configure(proxy: any) {
+    proxy.on('error', (err: any, _req: any, res: any) => {
+      const message = err?.code || err?.message || 'backend unavailable'
+      console.warn(`[vite] backend proxy unavailable: ${message}`)
+      if (res && !res.headersSent) {
+        res.writeHead(503, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ detail: 'Backend is starting or unavailable' }))
+      }
+    })
+  },
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -17,14 +32,8 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      [normalizedApiBase]: {
-        target: backendTarget,
-        changeOrigin: true,
-      },
-      '/health': {
-        target: backendTarget,
-        changeOrigin: true,
-      },
+      [normalizedApiBase]: backendProxy,
+      '/health': backendProxy,
       '/ws': {
         target: backendTarget.replace(/^http/, 'ws'),
         ws: true,

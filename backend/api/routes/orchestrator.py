@@ -3,13 +3,14 @@ Orchestrator management API routes.
 Handles task dispatching and orchestrator configuration.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import aiosqlite
 import asyncio
 import json
+from pathlib import Path
 
 
 def utc_now() -> datetime:
@@ -23,7 +24,7 @@ from backend.database.models import (
     ChatRequest, ChatResponse, MessageRole, ContentType
 )
 from backend.api.dependencies import (
-    get_db, get_current_user_id
+    fetch_active_workspace_path, get_db, get_current_user_id
 )
 
 router = APIRouter(prefix="/orchestrator", tags=["orchestrator"])
@@ -427,8 +428,22 @@ Rules:
 """
 
 
-async def _enabled_providers_summary(db: aiosqlite.Connection, user_id: int) -> str:
-    """Build a short string listing the user's currently enabled providers."""
+AGENT_COLORS = {
+    "claude": "#f59e0b",
+    "gemini": "#6366f1",
+    "codex": "#10b981",
+    "copilot": "#71717a",
+    "deepseek": "#a855f7",
+    "kimi": "#f43f5e",
+    "cline": "#06b6d4",
+    "bob": "#3b82f6",
+}
+
+
+async def _enabled_provider_rows(
+    db: aiosqlite.Connection, user_id: int
+) -> List[Dict[str, str]]:
+    """Return enabled providers in the compact shape used by planners."""
     try:
         cur = await db.execute(
             """
@@ -439,11 +454,26 @@ async def _enabled_providers_summary(db: aiosqlite.Connection, user_id: int) -> 
             """
         )
         rows = await cur.fetchall()
-        if not rows:
-            return "(no providers enabled)"
-        return ", ".join(f"{r['display_name']} [{r['name']}] ({r['default_model']})" for r in rows)
+        return [
+            {
+                "name": str(r["name"]),
+                "display_name": str(r["display_name"] or r["name"]),
+                "default_model": str(r["default_model"] or ""),
+            }
+            for r in rows
+        ]
     except Exception:
-        return "(unavailable)"
+        return []
+
+
+async def _enabled_providers_summary(db: aiosqlite.Connection, user_id: int) -> str:
+    """Build a short string listing the user's currently enabled providers."""
+    rows = await _enabled_provider_rows(db, user_id)
+    if not rows:
+        return "(no providers enabled)"
+    return ", ".join(
+        f"{r['display_name']} [{r['name']}] ({r['default_model']})" for r in rows
+    )
 
 
 def _strip_code_fences(text: str) -> str:
@@ -518,7 +548,7 @@ def _plan_from_nlu_analysis(
     }
 
 
-def _offline_chat_plan(message: str, providers_summary: str) -> Dict[str, Any]:
+def _legacy_offline_chat_plan(message: str, providers_summary: str) -> Dict[str, Any]:
     """Deterministic fallback when Watsonx is not configured (still useful for local dev)."""
     preview = message.strip()[:240]
     return {
@@ -535,6 +565,131 @@ def _offline_chat_plan(message: str, providers_summary: str) -> Dict[str, Any]:
         "divisions": [],
         "artifacts": [{"name": "task-notes.md", "kind": "md"}],
     }
+
+
+def _task_for_provider(provider_name: str, message: str) -> str:
+    """Create an actionable, provider-specific one-line assignment."""
+    short = provider_name.lower()
+    preview = " ".join(message.strip().split())[:180] or "the requested change"
+    lower = preview.lower()
+
+    if "landing page" in lower:
+        landing = {
+            "gemini": "Design the landing page structure, visual hierarchy, responsive sections, and token usage.",
+            "codex": "Implement the landing page components/styles using existing design tokens and verify the build.",
+            "claude": "Define the page architecture, content order, and acceptance criteria for the landing page.",
+            "copilot": "Add supporting UI glue, small component refinements, and smoke checks for the landing page.",
+            "deepseek": "Review edge cases, accessibility, responsive behavior, and performance for the landing page.",
+            "kimi": "Tighten landing page copy, section labels, and product messaging.",
+            "cline": "Run the repo commands needed to apply and validate the landing page changes.",
+            "bob": "Coordinate the landing page work and keep divisions.md current.",
+        }
+        if short in landing:
+            return landing[short]
+
+    generic = {
+        "gemini": f"Analyze UX/product requirements and propose the frontend approach for: {preview}",
+        "codex": f"Make the code changes and run focused verification for: {preview}",
+        "claude": f"Break down architecture, risks, and implementation order for: {preview}",
+        "copilot": f"Handle small implementation glue, tests, and docs for: {preview}",
+        "deepseek": f"Check edge cases, performance, and failure modes for: {preview}",
+        "kimi": f"Refine copy, naming, and user-facing details for: {preview}",
+        "cline": f"Execute repo automation and validation commands for: {preview}",
+        "bob": f"Coordinate the plan and reconcile agent outputs for: {preview}",
+    }
+    return generic.get(short, f"Work on your assigned slice of: {preview}")
+
+
+def _local_divisions(message: str, providers: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Split a user request across the enabled agents without requiring Watsonx."""
+    divisions: List[Dict[str, str]] = []
+    for provider in providers[:6]:
+        short = provider["name"]
+        divisions.append(
+            {
+                "agent": provider["display_name"],
+                "short": short,
+                "color": AGENT_COLORS.get(short, "#6366f1"),
+                "task": _task_for_provider(short, message),
+                "status": "running",
+            }
+        )
+    return divisions
+
+
+def _offline_chat_plan(
+    message: str,
+    providers_summary: str,
+    providers: Optional[List[Dict[str, str]]] = None,
+    reason: str = "Watsonx call skipped - credentials or SDK missing.",
+) -> Dict[str, Any]:
+    """Deterministic fallback that still routes work to enabled local agents."""
+    providers = providers or []
+    divisions = _local_divisions(message, providers)
+    if divisions:
+        content = (
+            f"I split this into {len(divisions)} agent assignment"
+            f"{'' if len(divisions) == 1 else 's'} and queued the work locally. "
+            "Watsonx is unavailable, so I used the built-in router."
+        )
+    else:
+        content = (
+            "No enabled agents are available to receive work yet. Enable at least one CLI "
+            "provider in Settings, then dispatch the task again."
+        )
+    return {
+        "content": content,
+        "thinking": [
+            "Parsed the user request locally.",
+            f"Enabled agents: {providers_summary}",
+            reason,
+            f"Created {len(divisions)} runnable agent assignment(s).",
+        ],
+        "divisions": divisions,
+        "artifacts": [{"name": "divisions.md", "kind": "md"}],
+        "model": "local-router",
+    }
+
+
+async def _write_divisions_artifact(
+    db: aiosqlite.Connection,
+    user_id: int,
+    message: str,
+    plan: Dict[str, Any],
+) -> None:
+    """Persist the generated split to workspace/shared/divisions.md when possible."""
+    divisions = plan.get("divisions") or []
+    if not divisions:
+        return
+    workspace = await fetch_active_workspace_path(db, user_id)
+    if not workspace:
+        return
+
+    shared_dir = Path(workspace) / "shared"
+    lines = [
+        "# Task Divisions",
+        "",
+        f"Task: {message.strip()}",
+        "",
+    ]
+    for div in divisions:
+        lines.extend(
+            [
+                f"## {div.get('agent', div.get('short', 'Agent'))}",
+                "",
+                f"- Status: {div.get('status', 'queued')}",
+                f"- Short id: {div.get('short', '')}",
+                f"- Assignment: {div.get('task', '')}",
+                "",
+            ]
+        )
+    text = "\n".join(lines).rstrip() + "\n"
+
+    def write_file() -> None:
+        shared_dir.mkdir(parents=True, exist_ok=True)
+        (shared_dir / "divisions.md").write_text(text, encoding="utf-8")
+
+    await asyncio.to_thread(write_file)
 
 
 def _parse_watsonx_plan(raw: str, fallback_message: str) -> Dict[str, Any]:
@@ -637,7 +792,15 @@ async def chat_inference(
     )
     await db.commit()
 
-    providers_summary = await _enabled_providers_summary(db, user_id)
+    provider_rows = await _enabled_provider_rows(db, user_id)
+    providers_summary = (
+        ", ".join(
+            f"{r['display_name']} [{r['name']}] ({r['default_model']})"
+            for r in provider_rows
+        )
+        if provider_rows
+        else "(no providers enabled)"
+    )
 
     model_id = request.model_name or "ibm/granite-13b-chat-v2"
     fallback_text = "I'm here. What would you like to build?"
@@ -678,17 +841,23 @@ async def chat_inference(
                     plan = await _run_nlu()
                 except Exception as nlu_err:
                     logger.exception("NLU fallback failed")
-                    plan = _offline_chat_plan(request.message, providers_summary)
-                    plan["content"] = (
-                        f"Watsonx failed ({err[:120]}). NLU also failed ({nlu_err}). "
-                        "Check backend/.env credentials."
+                    plan = _offline_chat_plan(
+                        request.message,
+                        providers_summary,
+                        provider_rows,
+                        reason=f"Watsonx failed ({err[:120]}). NLU also failed ({nlu_err}).",
                     )
             else:
-                plan = _offline_chat_plan(request.message, providers_summary)
+                plan = _offline_chat_plan(
+                    request.message,
+                    providers_summary,
+                    provider_rows,
+                    reason=f"Watsonx failed ({err[:160]}).",
+                )
                 if "403" in err or "Forbidden" in err or "not a member of the project" in err:
-                    plan["content"] = (
-                        "Watsonx rejected the project ID (403). Set NLU_API_KEY/NLU_URL "
-                        "or fix WATSONX_PROJECT_ID, then restart python run.py."
+                    plan["thinking"].insert(
+                        0,
+                        "Watsonx rejected the project ID (403); local router used instead.",
                     )
                 else:
                     plan["content"] = (
@@ -699,14 +868,32 @@ async def chat_inference(
             plan = await _run_nlu()
         except Exception as e:
             logger.exception("NLU chat failed")
-            plan = _offline_chat_plan(request.message, providers_summary)
-            plan["content"] = f"Watson NLU failed: {e}"
+            plan = _offline_chat_plan(
+                request.message,
+                providers_summary,
+                provider_rows,
+                reason=f"Watson NLU failed: {e}",
+            )
     else:
         if not IBM_WATSON_AVAILABLE:
             logger.warning("IBM Watson SDK unavailable — offline chat fallback")
-        plan = _offline_chat_plan(request.message, providers_summary)
+        plan = _offline_chat_plan(request.message, providers_summary, provider_rows)
         if nlu_ready and ai_mode == "watsonx":
             plan["content"] += " (NLU is configured; set ORCHESTRATOR_AI=auto or nlu to use it.)"
+
+    if provider_rows and not plan.get("divisions"):
+        divisions = _local_divisions(request.message, provider_rows)
+        plan["divisions"] = divisions
+        plan["artifacts"] = [{"name": "divisions.md", "kind": "md"}]
+        plan["thinking"] = [
+            *(plan.get("thinking") or []),
+            f"Local router added {len(divisions)} runnable agent assignment(s).",
+        ]
+
+    try:
+        await _write_divisions_artifact(db, user_id, request.message, plan)
+    except Exception:
+        logger.exception("failed to write divisions.md")
 
     cursor = await db.execute("SELECT id FROM providers WHERE name = 'bob' LIMIT 1")
     bob_row = await cursor.fetchone()

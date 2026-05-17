@@ -13,6 +13,8 @@ import subprocess
 import time
 import platform
 import shutil
+import queue
+import threading
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -97,6 +99,8 @@ class ProcessManager:
         self.recreate_venv = recreate_venv
         self.clean_install = clean_install
         self.backend_port = None  # Store the actual port being used
+        self.output_queue: "queue.Queue[Tuple[str, str]]" = queue.Queue()
+        self._output_readers_started = False
         
         # Determine venv paths based on platform
         if platform.system() == "Windows":
@@ -105,6 +109,37 @@ class ProcessManager:
         else:
             self.venv_python = self.venv_dir / "bin" / "python"
             self.venv_pip = self.venv_dir / "bin" / "pip"
+
+    def _start_output_reader(self, label: str, pipe) -> None:
+        """Continuously drain a subprocess pipe without blocking the monitor loop."""
+        if pipe is None:
+            return
+
+        def reader() -> None:
+            try:
+                for line in iter(pipe.readline, ""):
+                    if not line:
+                        break
+                    self.output_queue.put((label, line.rstrip()))
+            except Exception as e:
+                self.output_queue.put((label, f"[output reader stopped: {e}]"))
+
+        thread = threading.Thread(
+            target=reader,
+            name=f"{label.lower()}-output-reader",
+            daemon=True,
+        )
+        thread.start()
+
+    def _start_output_readers(self) -> None:
+        """Start stdout drainers for child processes once both have launched."""
+        if self._output_readers_started:
+            return
+        if self.backend_process and self.backend_process.stdout:
+            self._start_output_reader("Backend", self.backend_process.stdout)
+        if self.frontend_process and self.frontend_process.stdout:
+            self._start_output_reader("Frontend", self.frontend_process.stdout)
+        self._output_readers_started = True
     
     def find_available_port(self, start_port: int = 8000, max_attempts: int = 10) -> Optional[int]:
         """Find an available port starting from start_port.
@@ -125,6 +160,38 @@ class ProcessManager:
             except OSError:
                 continue
         return None
+
+    def wait_for_backend_health(
+        self,
+        host: str,
+        port: int,
+        timeout: int = 20,
+    ) -> bool:
+        """Wait until the backend responds to /health."""
+        import urllib.error
+        import urllib.request
+
+        health_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+        health_url = f"http://{health_host}:{port}/health"
+        deadline = time.time() + timeout
+        last_error = ""
+
+        while time.time() < deadline:
+            if self.backend_process and self.backend_process.poll() is not None:
+                print_error("Backend process exited before health check passed")
+                return False
+            try:
+                with urllib.request.urlopen(health_url, timeout=2) as response:
+                    if response.status == 200:
+                        print_success(f"Backend health check passed: {health_url}")
+                        return True
+                    last_error = f"HTTP {response.status}"
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                last_error = str(e)
+            time.sleep(0.25)
+
+        print_error(f"Backend did not become healthy at {health_url}: {last_error}")
+        return False
         
     def check_python_version(self) -> bool:
         """Check if Python version meets requirements."""
@@ -541,12 +608,13 @@ class ProcessManager:
                 "sqlite+aiosqlite:///" + str(db_abs).replace("\\", "/")
             )
             
-            # Sanitize DEBUG environment variable to prevent conflicts
-            if 'DEBUG' in os.environ:
-                debug_value = os.environ['DEBUG'].lower()
-                if debug_value not in ['true', 'false', '1', '0']:
-                    del os.environ['DEBUG']
-                    print_info("Removed conflicting DEBUG environment variable")
+            # Sanitize DEBUG in the environment passed to the backend. Some
+            # shells/tools set DEBUG=release, which Pydantic cannot parse as a
+            # boolean and causes the Uvicorn child process to crash on import.
+            debug_value = backend_env.get("DEBUG", "").strip().lower()
+            if debug_value and debug_value not in {"true", "false", "1", "0"}:
+                backend_env.pop("DEBUG", None)
+                print_info("Removed conflicting DEBUG environment variable")
             
             # Prepare command using venv python
             cmd = [
@@ -612,6 +680,8 @@ class ProcessManager:
                             startup_output.append(line)
                             # Check for successful startup indicators
                             if "Uvicorn running on" in line or "Application startup complete" in line:
+                                if not self.wait_for_backend_health(host, self.backend_port):
+                                    return False
                                 print_success(f"Backend server started (PID: {self.backend_process.pid})")
                                 print_info(f"API Documentation: http://{host}:{self.backend_port}/docs")
                                 print_info(f"Health Check: http://{host}:{self.backend_port}/health")
@@ -625,7 +695,9 @@ class ProcessManager:
             if self.backend_process.poll() is None:
                 # Process is running but didn't show startup message
                 print_warning("Backend process started but no startup confirmation received")
-                print_info("Assuming backend is running...")
+                print_info("Waiting for backend health endpoint...")
+                if not self.wait_for_backend_health(host, self.backend_port):
+                    return False
                 print_success(f"Backend server started (PID: {self.backend_process.pid})")
                 print_info(f"API Documentation: http://{host}:{self.backend_port}/docs")
                 print_info(f"Health Check: http://{host}:{self.backend_port}/health")
@@ -700,20 +772,21 @@ class ProcessManager:
         """Monitor and display output from processes."""
         print_section("Server Output")
         print_info("Press Ctrl+C to stop all servers\n")
+        self._start_output_readers()
         
         try:
             while True:
-                # Check backend output
-                if self.backend_process and self.backend_process.stdout:
-                    line = self.backend_process.stdout.readline()
-                    if line:
-                        print(f"{Colors.OKBLUE}[Backend]{Colors.ENDC} {line.rstrip()}")
-                
-                # Check frontend output
-                if self.frontend_process and self.frontend_process.stdout:
-                    line = self.frontend_process.stdout.readline()
-                    if line:
-                        print(f"{Colors.OKCYAN}[Frontend]{Colors.ENDC} {line.rstrip()}")
+                # Print any lines drained by background reader threads.
+                try:
+                    label, line = self.output_queue.get(timeout=0.25)
+                    color = Colors.OKBLUE if label == "Backend" else Colors.OKCYAN
+                    print(f"{color}[{label}]{Colors.ENDC} {line}")
+                    while True:
+                        label, line = self.output_queue.get_nowait()
+                        color = Colors.OKBLUE if label == "Backend" else Colors.OKCYAN
+                        print(f"{color}[{label}]{Colors.ENDC} {line}")
+                except queue.Empty:
+                    pass
                 
                 # Check if processes are still running
                 if self.backend_process and self.backend_process.poll() is not None:
@@ -724,7 +797,7 @@ class ProcessManager:
                     print_error("Frontend process terminated unexpectedly")
                     break
                 
-                time.sleep(0.1)
+                time.sleep(0.05)
                 
         except KeyboardInterrupt:
             print("\n")
@@ -779,8 +852,8 @@ Examples:
   # Initialize database and run
   python run.py --init-db
 
-  # Production mode (no auto-reload)
-  python run.py --no-reload
+  # Development mode with backend auto-reload
+  python run.py --reload
 
   # Custom host binding
   python run.py --host 127.0.0.1
@@ -821,9 +894,15 @@ Examples:
     )
     
     parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable backend auto-reload for development"
+    )
+
+    parser.add_argument(
         "--no-reload",
         action="store_true",
-        help="Disable auto-reload (production mode)"
+        help="Compatibility flag; backend auto-reload is disabled by default"
     )
     
     parser.add_argument(
@@ -933,7 +1012,7 @@ Examples:
         if not manager.start_backend(
             host=args.host,
             port=args.port,
-            reload=not args.no_reload
+            reload=args.reload and not args.no_reload
         ):
             success = False
     
