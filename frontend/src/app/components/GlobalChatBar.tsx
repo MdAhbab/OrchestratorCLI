@@ -1,5 +1,7 @@
 import { ArrowUp, CornerDownLeft, Paperclip } from "lucide-react";
+import { useRef } from "react";
 import { VoiceButton } from "./VoiceButton";
+import { apiPath } from "../lib/api";
 
 export function GlobalChatBar({
   value,
@@ -7,13 +9,35 @@ export function GlobalChatBar({
   onSubmit,
   onVoice,
   onPartial,
+  sessionId,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
   onVoice: (t: string) => void;
   onPartial: (t: string) => void;
+  sessionId?: number | null;
 }) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const attachFiles = async (files: FileList | null) => {
+    if (!files?.length || sessionId == null) return;
+    for (const file of Array.from(files)) {
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("session_id", String(sessionId));
+        const res = await fetch(apiPath("/workspace/context"), { method: "POST", body: fd });
+        if (!res.ok) {
+          console.warn("attach failed", await res.text());
+        }
+      } catch (e) {
+        console.warn("attach error", e);
+      }
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-6 sm:pb-5">
       <div className="pointer-events-auto mx-auto w-full max-w-3xl">
@@ -40,9 +64,19 @@ export function GlobalChatBar({
             />
             <div className="flex items-center justify-between gap-2 px-3 py-2">
               <div className="flex items-center gap-1">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(e) => void attachFiles(e.target.files)}
+                />
                 <button
                   type="button"
-                  className="flex items-center gap-1 rounded-md border border-zinc-200/70 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-100 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={sessionId == null}
+                  title={sessionId == null ? "Start chatting to attach files to a session" : "Attach files"}
+                  className="flex items-center gap-1 rounded-md border border-zinc-200/70 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
                 >
                   <Paperclip className="h-3 w-3" /> Attach
                 </button>

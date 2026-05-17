@@ -36,11 +36,15 @@ export function ContextDropzone({
   setFiles,
   collapsed,
   onToggle,
+  agentCount = 0,
+  onResync,
 }: {
   files: CtxFile[];
   setFiles: React.Dispatch<React.SetStateAction<CtxFile[]>>;
   collapsed?: boolean;
   onToggle?: () => void;
+  agentCount?: number;
+  onResync?: () => void;
 }) {
   const [drag, setDrag] = useState(false);
   const [filter, setFilter] = useState<"all" | "user" | "orch">("all");
@@ -60,7 +64,7 @@ export function ContextDropzone({
             Workspace Context
           </span>
           <span className="rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
-            shared · 6 agents
+            shared · {agentCount > 0 ? `${agentCount} agents` : "workspace folder"}
           </span>
         </div>
         {onToggle && (
@@ -92,7 +96,11 @@ export function ContextDropzone({
                 {l}
               </button>
             ))}
-            <button className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200">
+            <button
+              type="button"
+              onClick={() => onResync?.()}
+              className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200"
+            >
               <RefreshCw className="h-3 w-3" />
               Resync
             </button>
@@ -132,6 +140,13 @@ export function ContextDropzone({
           </label>
 
           <div className="flex-1 space-y-1.5 overflow-y-auto px-3 pb-3">
+            {visible.length === 0 && (
+              <div className="rounded-lg border border-dashed border-zinc-300/70 px-4 py-8 text-center text-[11px] text-zinc-500 dark:border-white/10">
+                No files in <span className="font-mono">shared/</span> yet. Add{" "}
+                <span className="font-mono">skill.md</span>,{" "}
+                <span className="font-mono">plan.md</span>, etc. under your workspace.
+              </div>
+            )}
             <AnimatePresence>
               {visible.map((f) => (
                 <motion.div

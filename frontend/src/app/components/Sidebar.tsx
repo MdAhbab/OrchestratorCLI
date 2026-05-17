@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
+  Activity,
   ChevronDown,
   CircleCheck,
   CircleX,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import { useStore, type Status, type SessionEntry } from "./store";
+import { apiPath, healthCheckUrl } from "../lib/api";
 
 const STATUS_MAP: Record<Status, { dot: string; label: string; text: string }> = {
   online: { dot: "bg-emerald-500", label: "online", text: "text-emerald-600 dark:text-emerald-400" },
@@ -36,10 +38,27 @@ const STATUS_ICON: Record<SessionEntry["status"], { Icon: typeof CircleCheck; cl
   active: { Icon: Loader2, cls: "text-indigo-500 animate-spin" },
 };
 
-function HistoryItem({ s }: { s: SessionEntry }) {
+function HistoryItem({
+  s,
+  onSelect,
+}: {
+  s: SessionEntry;
+  onSelect?: () => void;
+}) {
   const { Icon, cls } = STATUS_ICON[s.status];
   return (
-    <div className="group flex cursor-pointer items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-zinc-200/70 hover:bg-white dark:hover:border-white/[0.06] dark:hover:bg-white/[0.03]">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect?.()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      className="group flex cursor-pointer items-start gap-2 rounded-md border border-transparent px-2 py-1.5 transition hover:border-zinc-200/70 hover:bg-white dark:hover:border-white/[0.06] dark:hover:bg-white/[0.03]"
+    >
       <Icon className={`mt-0.5 h-3 w-3 shrink-0 ${cls}`} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11.5px] leading-snug text-zinc-800 dark:text-zinc-200">
@@ -58,19 +77,108 @@ function HistoryItem({ s }: { s: SessionEntry }) {
 }
 
 export function Sidebar({
+  view,
+  onView,
   onOpenSettings,
   mobileOpen = false,
   onCloseMobile,
+  onSelectSession,
 }: {
+  view?: string;
+  onView?: (v: "chat" | "processes" | "settings") => void;
   onOpenSettings?: () => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  /** Load a session's messages in the main chat view */
+  onSelectSession?: (sessionId: number) => void;
 }) {
-  const { providers, sessions } = useStore();
+  const { providers, sessions: localSessions } = useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [gitOpen, setGitOpen] = useState(true);
   const [q, setQ] = useState("");
+  const [backendHealthy, setBackendHealthy] = useState(false);
+  const [backendLatencyMs, setBackendLatencyMs] = useState<number | null>(null);
+  const [remoteSessions, setRemoteSessions] = useState<SessionEntry[]>([]);
+  const [git, setGit] = useState<any>(null);
+  const [gitCmd, setGitCmd] = useState("");
+  const [gitOutput, setGitOutput] = useState<string>("");
+
+  // Fetch real sessions from backend
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(apiPath("/sessions?limit=20"));
+        if (!r.ok) return;
+        const j = await r.json();
+        if (cancelled) return;
+        const mapped: SessionEntry[] = (j.sessions ?? []).map((s: any) => ({
+          id: String(s.id),
+          prompt: s.title ?? "(untitled session)",
+          status:
+            s.status === "completed"
+              ? "completed"
+              : s.status === "failed" || s.status === "archived"
+              ? "failed"
+              : "active",
+          startedAt: new Date(s.created_at).getTime(),
+          agents: [],
+          spend: 0,
+          divisions: [],
+          artifacts: [],
+        }));
+        setRemoteSessions(mapped);
+      } catch (err) {
+        console.warn("sessions load failed", err);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // Fetch real git status
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const r = await fetch(apiPath("/workspace/git"));
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!cancelled) setGit(j);
+      } catch {}
+    };
+    void load();
+    const id = window.setInterval(load, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const runGit = async () => {
+    if (!gitCmd.trim()) return;
+    try {
+      const r = await fetch(apiPath("/workspace/git/run"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: gitCmd }),
+      });
+      const j = await r.json();
+      const stdout = j.stdout || "";
+      const stderr = j.stderr || j.detail || "";
+      setGitOutput(`$ ${j.command || `git ${gitCmd}`}\n${stdout}${stderr ? "\n" + stderr : ""}`);
+      setGitCmd("");
+    } catch (err) {
+      setGitOutput(`error: ${err}`);
+    }
+  };
+
+  const sessions = remoteSessions.length > 0 ? remoteSessions : localSessions;
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1024px)");
@@ -78,6 +186,41 @@ export function Sidebar({
     apply();
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkBackendHealth = async () => {
+      const startedAt = performance.now();
+      try {
+        const response = await fetch(healthCheckUrl(), { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Health check failed with status ${response.status}`);
+        }
+        await response.json();
+
+        if (!cancelled) {
+          setBackendHealthy(true);
+          setBackendLatencyMs(Math.max(1, Math.round(performance.now() - startedAt)));
+        }
+      } catch {
+        if (!cancelled) {
+          setBackendHealthy(false);
+          setBackendLatencyMs(null);
+        }
+      }
+    };
+
+    void checkBackendHealth();
+    const intervalId = window.setInterval(() => {
+      void checkBackendHealth();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, []);
 
   const filtered = sessions.filter((s) =>
@@ -157,7 +300,19 @@ export function Sidebar({
                       </p>
                     </div>
                   ) : (
-                    filtered.map((s) => <HistoryItem key={s.id} s={s} />)
+                    filtered.map((s) => (
+                      <HistoryItem
+                        key={s.id}
+                        s={s}
+                        onSelect={() => {
+                          const n = Number(s.id);
+                          if (!Number.isNaN(n)) {
+                            onSelectSession?.(n);
+                            onCloseMobile?.();
+                          }
+                        }}
+                      />
+                    ))
                   )}
                 </div>
               </motion.div>
@@ -174,8 +329,16 @@ export function Sidebar({
               <span className="bg-gradient-to-r from-indigo-400 to-fuchsia-400 bg-clip-text font-mono text-[10.5px] uppercase tracking-[0.22em] text-transparent">
                 Git Handling
               </span>
-              <span className="rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[9px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
-                clean
+              <span
+                className={`rounded-md border px-1.5 py-0.5 font-mono text-[9px] ${
+                  !git?.is_repo
+                    ? "border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-white/10 dark:bg-white/[0.04]"
+                    : (git?.files_changed ?? 0) === 0
+                    ? "border-emerald-300/40 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300"
+                    : "border-amber-300/40 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300"
+                }`}
+              >
+                {!git?.is_repo ? "no repo" : (git?.files_changed ?? 0) === 0 ? "clean" : `${git.files_changed} dirty`}
               </span>
             </div>
             <ChevronDown
@@ -191,42 +354,117 @@ export function Sidebar({
                 className="overflow-hidden"
               >
                 <div className="space-y-2 border-t border-zinc-200/70 p-3 dark:border-white/[0.06]">
-                  <GitField label="Branch" value="main" mono />
-                  <GitField label="Status" value="3 files changed" valueClass="text-amber-600 dark:text-amber-300" />
-                  <GitField label="User" value="Git Username" />
-                  <GitField label="Repo" value="https://github.com/user/repo" mono truncate />
+                  <GitField label="Branch" value={git?.branch ?? "—"} mono />
+                  <GitField
+                    label="Status"
+                    value={
+                      !git?.is_repo
+                        ? "not a git repo"
+                        : (git?.files_changed ?? 0) === 0
+                        ? "working tree clean"
+                        : `${git.files_changed} file${git.files_changed === 1 ? "" : "s"} changed`
+                    }
+                    valueClass={
+                      (git?.files_changed ?? 0) === 0
+                        ? "text-emerald-600 dark:text-emerald-300"
+                        : "text-amber-600 dark:text-amber-300"
+                    }
+                  />
+                  <GitField label="HEAD" value={git?.head_short ?? "—"} mono />
+                  {git?.head_subject && (
+                    <GitField label="Last" value={git.head_subject} truncate />
+                  )}
+                  {git?.workspace_path && (
+                    <GitField label="Path" value={git.workspace_path} mono truncate />
+                  )}
 
                   <div className="mt-2 flex items-center gap-1 rounded-md border border-zinc-200/70 bg-white px-2 dark:border-white/[0.07] dark:bg-black/40">
                     <span className="font-mono text-[11px] text-indigo-500">›</span>
                     <input
-                      placeholder="git command... (commit, merge, etc.)"
+                      value={gitCmd}
+                      onChange={(e) => setGitCmd(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void runGit();
+                        }
+                      }}
+                      placeholder="git status / log / branch / diff…"
                       className="flex-1 bg-transparent py-1.5 font-mono text-[10.5px] text-zinc-800 outline-none placeholder:text-zinc-400 dark:text-zinc-200"
                     />
                   </div>
-                  <div className="flex items-start gap-1.5 rounded-md border border-indigo-300/40 bg-indigo-50/60 px-2 py-1.5 dark:border-indigo-400/20 dark:bg-indigo-400/[0.06]">
-                    <Sparkles className="mt-0.5 h-2.5 w-2.5 shrink-0 text-indigo-500 dark:text-indigo-300" />
-                    <span className="font-mono text-[9.5px] leading-snug text-indigo-700 dark:text-indigo-200">
-                      Commands entered here are intercepted and handled by the Orchestrator.
-                    </span>
-                  </div>
+                  {gitOutput && (
+                    <pre className="max-h-32 overflow-auto rounded border border-zinc-200/70 bg-black/80 px-2 py-1.5 font-mono text-[10px] leading-snug text-zinc-200 dark:border-white/[0.05]">
+                      {gitOutput}
+                    </pre>
+                  )}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
+        {/* Watch Live Processes Button */}
+        <button
+          onClick={() => onView?.(view === "processes" ? "chat" : "processes")}
+          className={`group relative flex w-full items-center justify-between overflow-hidden rounded-lg border px-3.5 py-3 transition-all duration-300 ${
+            view === "processes"
+              ? "border-indigo-500/50 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-fuchsia-500/10 shadow-[0_0_14px_rgba(99,102,241,0.12)]"
+              : "border-zinc-200/70 bg-white/40 hover:border-indigo-500/30 hover:bg-white/60 dark:border-white/[0.07] dark:bg-white/[0.015] dark:hover:bg-white/[0.03]"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <span className={`relative flex h-5 w-5 items-center justify-center rounded-md transition-colors ${
+              view === "processes"
+                ? "bg-indigo-500 text-white"
+                : "bg-zinc-100 text-zinc-500 group-hover:bg-indigo-50 group-hover:text-indigo-500 dark:bg-white/[0.04] dark:text-zinc-400 dark:group-hover:bg-indigo-500/10"
+            }`}>
+              <Activity className={`h-3 w-3 ${view === "processes" ? "animate-pulse" : ""}`} />
+            </span>
+            <div className="text-left">
+              <span className="block font-mono text-[9px] uppercase tracking-[0.15em] text-zinc-500 dark:text-zinc-400">
+                System Monitor
+              </span>
+              <span className="block text-[11.5px] font-semibold text-zinc-800 dark:text-zinc-200">
+                Watch Live Processes
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {view === "processes" ? (
+              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 font-mono text-[9px] font-semibold text-indigo-500 animate-pulse dark:bg-indigo-500/20">
+                ACTIVE
+              </span>
+            ) : (
+              <span className="font-mono text-[9px] text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300">
+                Open ›
+              </span>
+            )}
+          </div>
+        </button>
       </div>
 
       <div className="border-t border-zinc-200/70 px-3 py-3 pb-32 dark:border-white/[0.06]">
-        <div className="rounded-lg border border-emerald-300/40 bg-emerald-50 px-3 py-2 dark:border-emerald-400/15 dark:bg-emerald-400/[0.04]">
+        <div className={`rounded-lg border px-3 py-2 ${
+          backendHealthy
+            ? "border-emerald-300/40 bg-emerald-50 dark:border-emerald-400/15 dark:bg-emerald-400/[0.04]"
+            : "border-rose-300/40 bg-rose-50 dark:border-rose-400/15 dark:bg-rose-400/[0.04]"
+        }`}>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+                backendHealthy ? "bg-emerald-400" : "bg-rose-400"
+              }`} />
+              <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+                backendHealthy ? "bg-emerald-500" : "bg-rose-500"
+              }`} />
             </span>
-            <span className="text-[11px] text-zinc-900 dark:text-white">Backend healthy</span>
+            <span className="text-[11px] text-zinc-900 dark:text-white">
+              {backendHealthy ? "Backend healthy" : "Backend unreachable"}
+            </span>
           </div>
           <div className="mt-1 font-mono text-[9px] text-zinc-500 dark:text-zinc-400">
-            ws://127.0.0.1:8787 · 12ms
+            {healthCheckUrl().replace(/^https?:\/\//, "")} · {backendLatencyMs ? `${backendLatencyMs}ms` : "offline"}
           </div>
         </div>
       </div>
@@ -285,6 +523,17 @@ export function Sidebar({
               );
             })}
           </div>
+          <button
+            onClick={() => onView?.(view === "processes" ? "chat" : "processes")}
+            title="Watch Live Processes"
+            className={`mb-1 rounded-md border p-1.5 transition ${
+              view === "processes"
+                ? "border-indigo-500 bg-indigo-500/10 text-indigo-500 dark:bg-indigo-500/20"
+                : "border-zinc-200/70 bg-white text-zinc-500 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.06]"
+            }`}
+          >
+            <Activity className={`h-3.5 w-3.5 ${view === "processes" ? "animate-pulse" : ""}`} />
+          </button>
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}

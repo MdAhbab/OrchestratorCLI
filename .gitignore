@@ -10,7 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -24,6 +24,8 @@ venv/
 env/
 ENV/
 .venv
+
+
 
 # FastAPI
 .pytest_cache/
@@ -74,5 +76,10 @@ build/
 tmp/
 temp/
 *.tmp
+
+# Local SQLite database (created at runtime)
+data/*.db
+data/*.db-shm
+data/*.db-wal
 
 # Made with Bob

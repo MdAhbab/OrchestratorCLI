@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, Filter } from "lucide-react";
 import { OrchestratorGraph } from "./OrchestratorGraph";
 import { TerminalCard, type CliRuntime } from "./TerminalCard";
-import { ContextDropzone, INITIAL_CTX, type CtxFile } from "./ContextDropzone";
+import { ContextDropzone, type CtxFile } from "./ContextDropzone";
 import { AnalyticsStrip } from "./AnalyticsStrip";
 
 type Tab = "all" | "executing" | "idle" | "limited" | "permission";
@@ -12,24 +12,28 @@ export function ProcessesView({
   clis,
   files: filesProp,
   setFiles: setFilesProp,
+  onResyncShared,
+  onRuntime,
 }: {
   clis: CliRuntime[];
   files?: CtxFile[];
   setFiles?: React.Dispatch<React.SetStateAction<CtxFile[]>>;
+  onResyncShared?: () => void;
+  onRuntime?: (providerId: number | undefined, runtimeId: number | undefined) => void;
 }) {
-  const [localFiles, setLocalFiles] = useState<CtxFile[]>(INITIAL_CTX);
+  const [localFiles, setLocalFiles] = useState<CtxFile[]>([]);
   const files = filesProp ?? localFiles;
   const setFiles = setFilesProp ?? setLocalFiles;
 
   const [tab, setTab] = useState<Tab>("all");
   const [orchOpen, setOrchOpen] = useState(true);
   const [termsOpen, setTermsOpen] = useState(true);
-  const [ctxOpen, setCtxOpen] = useState(false);
+  const [ctxOpen, setCtxOpen] = useState(true);
 
   const filtered = clis.filter((c) => (tab === "all" ? true : c.state === tab));
   const totalUsed = clis.reduce((s, c) => s + c.used, 0);
   const totalCap = clis.reduce((s, c) => s + c.cap, 0);
-  const active = clis.filter((c) => c.state === "executing").length;
+  const active = clis.filter((c) => c.runtimeId != null).length;
 
   return (
     <div className="h-full min-h-0 overflow-y-auto pb-44 sm:pb-48">
@@ -84,11 +88,13 @@ export function ProcessesView({
         >
           <div className="grid gap-3 md:grid-cols-2">
             {filtered.map((c) => (
-              <TerminalCard key={c.id} cli={c} defaultMenuOpen={c.id === "copilot"} />
+              <TerminalCard key={c.id} cli={c} onRuntime={onRuntime} />
             ))}
             {filtered.length === 0 && (
               <div className="col-span-full rounded-xl border border-dashed border-zinc-300/70 bg-zinc-50/50 px-6 py-10 text-center text-[12px] text-zinc-500 dark:border-white/10 dark:bg-white/[0.02]">
-                No agents match this filter.
+                {clis.length === 0
+                  ? "No agents enabled yet. Pick CLIs in onboarding or Settings."
+                  : "No agents match this filter."}
               </div>
             )}
           </div>
@@ -101,7 +107,12 @@ export function ProcessesView({
           onToggle={() => setCtxOpen((o) => !o)}
         >
           <div className="h-[480px]">
-            <ContextDropzone files={files} setFiles={setFiles} />
+            <ContextDropzone
+              files={files}
+              setFiles={setFiles}
+              agentCount={clis.length}
+              onResync={onResyncShared}
+            />
           </div>
         </Section>
       </div>

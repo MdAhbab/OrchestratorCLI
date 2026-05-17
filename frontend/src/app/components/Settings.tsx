@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import { useTheme } from "./theme";
 import { Dropdown } from "./Sidebar";
 import { TerminalCard, type CliRuntime } from "./TerminalCard";
 import { ContextDropzone, INITIAL_CTX, type CtxFile } from "./ContextDropzone";
+import { apiPath } from "../lib/api";
 
 type Tab =
   | "general"
@@ -289,7 +290,83 @@ function ProvidersPanel() {
 function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => void }) {
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);
-  const [secret, setSecret] = useState("sk-proj-••••••••••••••••3f9a");
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open || !p.dbId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(apiPath(`/providers/${p.dbId}/credentials`));
+        if (r.ok && !cancelled) {
+          const j = await r.json();
+          setSecret((j.api_key as string) || "");
+        }
+      } catch {
+        if (!cancelled) setSecret("");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, p.dbId]);
+
+  const persistEnabled = (v: boolean) => {
+    onChange({ ...p, enabled: v });
+    if (p.dbId) {
+      void fetch(apiPath(`/providers/${p.dbId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled: v }),
+      });
+    }
+  };
+
+  const save = async () => {
+    if (!p.dbId) return;
+    setBusy(true);
+    try {
+      await fetch(apiPath(`/providers/${p.dbId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_enabled: p.enabled, default_model: p.model }),
+      });
+      if ((p.authMethod === "api_key" || p.authMethod === "bearer") && secret.trim()) {
+        const r = await fetch(apiPath(`/providers/${p.dbId}/credentials`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            credential_name: "default",
+            api_key: secret.trim(),
+          }),
+        });
+        if (!r.ok) {
+          console.warn("credential save failed", await r.text());
+        }
+      }
+      onChange({ ...p, configured: !!(p.authMethod === "account" ? p.accountEmail : secret) });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    if (!p.dbId) return;
+    setBusy(true);
+    try {
+      await fetch(apiPath(`/providers/${p.dbId}/credentials`), { method: "DELETE" });
+      setSecret("");
+      onChange({ ...p, configured: false });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200/70 bg-white/60 dark:border-white/[0.06] dark:bg-zinc-950/40">
       <div
@@ -323,7 +400,7 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
           </div>
         </div>
         <div onClick={(e) => e.stopPropagation()}>
-          <Toggle on={p.enabled} onChange={(v) => onChange({ ...p, enabled: v })} />
+          <Toggle on={p.enabled} onChange={persistEnabled} />
         </div>
       </div>
       {open && (
@@ -418,10 +495,20 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button className="flex items-center gap-1 rounded-md border border-rose-300/40 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/[0.08] dark:text-rose-300">
+            <button
+              type="button"
+              disabled={busy || !p.dbId}
+              onClick={() => void revoke()}
+              className="flex items-center gap-1 rounded-md border border-rose-300/40 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 disabled:opacity-40 dark:border-rose-400/20 dark:bg-rose-400/[0.08] dark:text-rose-300"
+            >
               <Trash2 className="h-3 w-3" /> Revoke
             </button>
-            <button className="flex items-center gap-1 rounded-md bg-zinc-900 px-2 py-1 text-[11px] text-white dark:bg-white dark:text-zinc-900">
+            <button
+              type="button"
+              disabled={busy || !p.dbId}
+              onClick={() => void save()}
+              className="flex items-center gap-1 rounded-md bg-zinc-900 px-2 py-1 text-[11px] text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            >
               <Save className="h-3 w-3" /> Save
             </button>
           </div>

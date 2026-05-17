@@ -12,178 +12,109 @@ import { Settings } from "./components/Settings";
 import { CommandPalette } from "./components/CommandPalette";
 import { GlobalChatBar } from "./components/GlobalChatBar";
 import { type CliRuntime } from "./components/TerminalCard";
+import { type CtxFile } from "./components/ContextDropzone";
+import { apiPath } from "./lib/api";
+import {
+  mapSharedFilesToCtx,
+  type SharedContextResponse,
+} from "./lib/workspaceContext";
 
 type View = "chat" | "processes" | "settings";
 
-const SEED: CliRuntime[] = [
-  {
-    id: "claude",
-    name: "Claude Code",
-    glyph: "✻",
-    color: "text-amber-500",
-    accent: "linear-gradient(to right,#f59e0b,#f97316)",
-    model: "claude-sonnet-4-6",
-    models: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-    authMethod: "account",
-    state: "executing",
-    used: 12.5,
-    cap: 20,
-    task: "Refactor src/middleware/auth.ts",
-    log: [
-      { kind: "sys", text: "session resumed from yaml · 3 turns" },
-      { kind: "cmd", text: "refactor src/middleware/auth.ts" },
-      { kind: "out", text: "analyzing 14 files, 1,820 LoC…" },
-      { kind: "out", text: "extracting session token validator" },
-      { kind: "ok", text: "wrote tests/auth.middleware.test.ts" },
-      { kind: "out", text: "running typecheck…" },
-    ],
-  },
-  {
-    id: "gemini",
-    name: "Gemini CLI",
-    glyph: "✦",
-    color: "text-indigo-500",
-    accent: "linear-gradient(to right,#6366f1,#a78bfa)",
-    model: "gemini-3-pro",
-    models: ["gemini-3-pro", "gemini-3-flash", "gemini-2.5-pro"],
-    authMethod: "account",
-    state: "executing",
-    used: 4.82,
-    cap: 15,
-    task: "Generate Login.tsx with design tokens",
-    log: [
-      { kind: "cmd", text: "generate components/Login.tsx --tokens" },
-      { kind: "out", text: "scaffolding…" },
-      { kind: "out", text: "applying theme tokens from skill.md" },
-      { kind: "ok", text: "added 3 components, 0 warnings" },
-    ],
-  },
-  {
-    id: "codex",
-    name: "Codex CLI",
-    glyph: "◆",
-    color: "text-emerald-500",
-    accent: "linear-gradient(to right,#10b981,#14b8a6)",
-    model: "gpt-codex-mini",
-    models: ["gpt-codex", "gpt-codex-mini", "o4-mini"],
-    authMethod: "account",
-    state: "permission",
-    used: 7.12,
-    cap: 10,
-    task: "Update session schema migration",
-    log: [
-      { kind: "cmd", text: "migrate schema → drizzle" },
-      { kind: "out", text: "diff: 4 tables added, 2 renamed" },
-      { kind: "warn", text: "destructive op detected" },
-    ],
-    pendingCmd: "drizzle-kit drop --table=users_old --confirm",
-  },
-  {
-    id: "deepseek",
-    name: "DeepSeek",
-    glyph: "▲",
-    color: "text-violet-500",
-    accent: "linear-gradient(to right,#a855f7,#e879f9)",
-    model: "deepseek-coder-v3",
-    models: ["deepseek-coder-v3", "deepseek-chat-v3", "deepseek-r1"],
-    authMethod: "api_key",
-    state: "limited",
-    used: 9.6,
-    cap: 10,
-    resetsIn: "04:12",
-    task: "Profile build pipeline (paused)",
-    log: [
-      { kind: "cmd", text: "profile build pipeline" },
-      { kind: "out", text: "captured 14k samples" },
-      { kind: "err", text: "429 daily quota exhausted" },
-      { kind: "sys", text: "failover → Claude Sonnet 4.6" },
-    ],
-  },
-  {
-    id: "copilot",
-    name: "Copilot CLI",
-    glyph: "❍",
-    color: "text-zinc-500 dark:text-zinc-300",
-    accent: "linear-gradient(to right,#a1a1aa,#71717a)",
-    model: "copilot-chat",
-    models: ["copilot-chat", "copilot-claude", "copilot-gpt5"],
-    authMethod: "account",
-    state: "idle",
-    used: 1.2,
-    cap: 12,
-    log: [
-      { kind: "sys", text: "ready · 0 jobs in queue" },
-      { kind: "out", text: "context synced · 7 files" },
-    ],
-  },
-  {
-    id: "kimi",
-    name: "Kimi Code",
-    glyph: "✺",
-    color: "text-rose-500",
-    accent: "linear-gradient(to right,#f43f5e,#ec4899)",
-    model: "kimi-k2",
-    models: ["kimi-k2", "kimi-k1.5"],
-    authMethod: "api_key",
-    state: "executing",
-    used: 2.4,
-    cap: 8,
-    task: "Translate docs/* → ja",
-    log: [
-      { kind: "cmd", text: "translate docs/* --to ja" },
-      { kind: "out", text: "processing 24 markdown files" },
-      { kind: "ok", text: "12/24 translated" },
-    ],
-  },
-  {
-    id: "cline",
-    name: "Cline CLI",
-    glyph: "◈",
-    color: "text-cyan-500",
-    accent: "linear-gradient(to right,#06b6d4,#0ea5e9)",
-    model: "cline-claude",
-    models: ["cline-default", "cline-claude", "cline-gpt5"],
-    authMethod: "api_key",
-    state: "idle",
-    used: 0.6,
-    cap: 10,
-    log: [
-      { kind: "sys", text: "watching repo for change events" },
-      { kind: "out", text: "0 pending jobs" },
-    ],
-  },
-  {
-    id: "bob",
-    name: "IBM BOB",
-    glyph: "∎",
-    color: "text-blue-500",
-    accent: "linear-gradient(to right,#3b82f6,#6366f1)",
-    model: "granite-3.2-code",
-    models: ["granite-3.2-code", "granite-3.1-code-base"],
-    authMethod: "api_key",
-    state: "executing",
-    used: 3.4,
-    cap: 15,
-    task: "Generate granite code completions",
-    log: [
-      { kind: "sys", text: "iam token refreshed · ibm-cloud" },
-      { kind: "cmd", text: "complete src/lib/utils.ts:42" },
-      { kind: "ok", text: "8 suggestions ranked" },
-    ],
-  },
-];
+/**
+ * Visual presentation hints (glyph / color / accent) keyed by provider short id.
+ * Everything else comes from the backend's `/api/providers?enabled_only=true`.
+ */
+const PROVIDER_LOOK: Record<string, { glyph: string; color: string; accent: string }> = {
+  claude:   { glyph: "✻", color: "text-amber-500",   accent: "linear-gradient(to right,#f59e0b,#f97316)" },
+  gemini:   { glyph: "✦", color: "text-indigo-500",  accent: "linear-gradient(to right,#6366f1,#a78bfa)" },
+  codex:    { glyph: "◆", color: "text-emerald-500", accent: "linear-gradient(to right,#10b981,#14b8a6)" },
+  deepseek: { glyph: "▲", color: "text-violet-500",  accent: "linear-gradient(to right,#a855f7,#e879f9)" },
+  copilot:  { glyph: "❍", color: "text-zinc-500 dark:text-zinc-300", accent: "linear-gradient(to right,#a1a1aa,#71717a)" },
+  kimi:     { glyph: "✺", color: "text-rose-500",    accent: "linear-gradient(to right,#f43f5e,#ec4899)" },
+  cline:    { glyph: "◈", color: "text-cyan-500",    accent: "linear-gradient(to right,#06b6d4,#0ea5e9)" },
+  bob:      { glyph: "∎", color: "text-blue-500",    accent: "linear-gradient(to right,#3b82f6,#6366f1)" },
+};
+
+function providerLook(id: string) {
+  return (
+    PROVIDER_LOOK[id] ?? {
+      glyph: "◉",
+      color: "text-zinc-500",
+      accent: "linear-gradient(to right,#71717a,#52525b)",
+    }
+  );
+}
 
 function Shell() {
-  const { onboarded, setOnboarded } = useStore();
+  const { onboarded, setOnboarded, providers: prefProviders } = useStore();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>("chat");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [clis, setClis] = useState(SEED);
+  const [clis, setClis] = useState<CliRuntime[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>(INITIAL_MSGS);
   const [chatInput, setChatInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [ctxFiles, setCtxFiles] = useState<CtxFile[]>([]);
 
-  const send = (text: string) => {
+  async function loadMessagesForSession(sid: number) {
+    try {
+      const msgRes = await fetch(apiPath(`/sessions/${sid}/messages`));
+      if (!msgRes.ok) return;
+      const msgData = await msgRes.json();
+      const raw = msgData.messages ?? [];
+      if (raw.length === 0) {
+        setMsgs([]);
+        return;
+      }
+      const mapped: Msg[] = raw.map((m: any) => {
+        const createdDate = new Date(m.created_at);
+        const ts = createdDate.toTimeString().slice(0, 5);
+        let meta = m.metadata;
+        if (meta && typeof meta === "string") {
+          try {
+            meta = JSON.parse(meta);
+          } catch {
+            meta = {};
+          }
+        }
+        return {
+          id: m.id.toString(),
+          role: m.role === "user" ? "user" : "orchestrator",
+          content: m.content,
+          ts,
+          thinking: meta?.thinking || [],
+          divisions: meta?.divisions || [],
+          artifacts: meta?.artifacts || [],
+        };
+      });
+      setMsgs(mapped);
+    } catch (err) {
+      console.error("Failed to load session messages:", err);
+    }
+  }
+
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        const res = await fetch(apiPath("/sessions?limit=1"));
+        if (res.ok) {
+          const data = await res.json();
+          if (data.sessions && data.sessions.length > 0) {
+            const sid = data.sessions[0].id;
+            setActiveSessionId(sid);
+            await loadMessagesForSession(sid);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load active session:", err);
+      }
+    };
+    void initSession();
+  }, []);
+
+  const send = async (text: string) => {
     const v = text.trim();
     if (!v) return;
     if (view !== "chat") setView("chat");
@@ -191,28 +122,49 @@ function Shell() {
     const userMsg: Msg = { id: `u${Date.now()}`, role: "user", content: v, ts };
     setMsgs((m) => [...m, userMsg]);
     setChatInput("");
-    setTimeout(() => {
-      const reply: Msg = {
-        id: `o${Date.now()}`,
+    try {
+      const res = await fetch(apiPath("/orchestrator/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: activeSessionId,
+          message: v
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!activeSessionId) {
+          setActiveSessionId(data.session_id);
+        }
+        const reply: Msg = {
+          id: data.message_id.toString(),
+          role: "orchestrator",
+          ts: new Date().toTimeString().slice(0, 5),
+          content: data.content,
+          thinking: data.metadata?.thinking || [],
+          divisions: data.metadata?.divisions || [],
+          artifacts: data.metadata?.artifacts || []
+        };
+        setMsgs((m) => [...m, reply]);
+      } else {
+        const errReply: Msg = {
+          id: `err-${Date.now()}`,
+          role: "orchestrator",
+          ts: new Date().toTimeString().slice(0, 5),
+          content: "Sorry, I encountered an error communicating with the orchestration service."
+        };
+        setMsgs((m) => [...m, errReply]);
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      const errReply: Msg = {
+        id: `err-${Date.now()}`,
         role: "orchestrator",
         ts: new Date().toTimeString().slice(0, 5),
-        content: "Parsed your request. Routing subtasks now and updating divisions.md so every agent stays aligned.",
-        thinking: [
-          "tokenize prompt · 412 tokens",
-          "classify domains · ui+logic+qa detected",
-          "match specialties · 3 agents selected",
-          "verify quotas · 3/3 within budget",
-          "write divisions.md → context bus",
-        ],
-        divisions: [
-          { agent: "Claude Sonnet 4.6", short: "claude", color: "#f59e0b", task: "Implement core logic", status: "running" },
-          { agent: "Gemini 3 Pro", short: "gemini", color: "#6366f1", task: "Build UI layer", status: "queued" },
-          { agent: "Copilot CLI", short: "copilot", color: "#64748b", task: "Generate tests", status: "queued" },
-        ],
-        artifacts: [{ name: "divisions.md", kind: "md" }],
+        content: "Network error: Failed to reach the backend services."
       };
-      setMsgs((m) => [...m, reply]);
-    }, 900);
+      setMsgs((m) => [...m, errReply]);
+    }
   };
 
   useEffect(() => {
@@ -238,52 +190,90 @@ function Shell() {
     return () => clearTimeout(t);
   }, []);
 
+  // Load the providers the user enabled during onboarding from the backend,
+  // then build CliRuntime[] for the Parallel Terminals page.
   useEffect(() => {
-    // Combined interval to prevent race conditions
-    let usageCounter = 0;
-    let logCounter = 0;
-    
-    const id = setInterval(() => {
-      usageCounter++;
-      logCounter++;
-      
-      setClis((prev) => {
-        return prev.map((c) => {
-          if (c.state !== "executing") return c;
-          
-          let updated = { ...c };
-          
-          // Update usage every ~1200ms (every interval)
-          if (usageCounter >= 1) {
-            const next = Math.min(c.cap, c.used + Math.random() * 0.08);
-            updated.used = next;
-          }
-          
-          // Update logs every ~1900ms (approximately every 1.6 intervals)
-          if (logCounter >= 2) {
-            const lines = [
-              { kind: "out" as const, text: "streaming chunk… 1.2kb" },
-              { kind: "out" as const, text: "tool: read_file(src/app/App.tsx)" },
-              { kind: "ok" as const, text: "applied patch · 6 lines" },
-              { kind: "out" as const, text: "linter: 0 errors, 1 warning" },
-            ];
-            const l = lines[Math.floor(Math.random() * lines.length)];
-            updated.log = [...c.log.slice(-9), l];
-          }
-          
-          return updated;
-        });
-      });
-      
-      // Reset counters
-      if (usageCounter >= 1) usageCounter = 0;
-      if (logCounter >= 2) logCounter = 0;
-    }, 1200);
-    
-    return () => clearInterval(id);
-  }, []);
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [provRes, activeRes, usageRes] = await Promise.all([
+          fetch(apiPath("/providers?enabled_only=true")),
+          fetch(apiPath("/runtimes/active")),
+          fetch(apiPath("/analytics/usage?days=1")).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const provJson = provRes.ok ? await provRes.json() : { providers: [] };
+        const activeJson = activeRes.ok ? await activeRes.json() : { runtimes: [] };
+        const usageJson = usageRes && usageRes.ok ? await usageRes.json() : null;
 
-  const activeAgents = clis.filter((c) => c.state === "executing").length;
+        const activeByProvider = new Map<number, any>();
+        for (const r of activeJson.runtimes ?? []) {
+          if (r.provider_id != null) activeByProvider.set(r.provider_id, r);
+        }
+        const costByProvider = new Map<string, number>();
+        if (usageJson?.providers) {
+          for (const [name, info] of Object.entries<any>(usageJson.providers)) {
+            costByProvider.set(name, Number(info?.cost ?? 0));
+          }
+        }
+
+        const next: CliRuntime[] = (provJson.providers ?? [])
+          .filter((p: any) => p.is_enabled && p.provider_type === "llm")
+          .map((p: any) => {
+            const look = providerLook(p.name);
+            const liveRuntime = activeByProvider.get(p.id);
+            const cap =
+              prefProviders.find((pr) => pr.id === p.name)?.dailyCap ?? 20;
+            return {
+              id: p.name,
+              providerId: p.id,
+              runtimeId: liveRuntime?.runtime_id,
+              name: p.display_name,
+              glyph: look.glyph,
+              color: look.color,
+              accent: look.accent,
+              model: p.default_model ?? "",
+              models: p.default_model ? [p.default_model] : [],
+              authMethod: "api_key" as const,
+              state: liveRuntime ? "executing" : "idle",
+              used: costByProvider.get(p.display_name) ?? 0,
+              cap,
+            };
+          });
+        setClis(next);
+      } catch (err) {
+        console.error("Failed to load enabled providers:", err);
+        setClis([]);
+      }
+    };
+    void load();
+    const interval = window.setInterval(() => {
+      void load();
+    }, 10000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [onboarded, prefProviders]);
+
+  const loadSharedContext = async () => {
+    try {
+      const res = await fetch(apiPath("/workspace/shared"), { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as SharedContextResponse;
+      const agentCount = Math.max(1, clis.length);
+      setCtxFiles(mapSharedFilesToCtx(data.files ?? [], agentCount));
+    } catch (err) {
+      console.error("Failed to load workspace shared context:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (!onboarded) return;
+    void loadSharedContext();
+  }, [onboarded, clis.length]);
+
+  const activeAgents = clis.filter((c) => c.runtimeId != null).length;
 
   if (!loading && !onboarded) {
     return (
@@ -318,12 +308,22 @@ function Shell() {
 
       <div className="relative z-10 flex h-full">
         <Sidebar
+          view={view}
+          onView={(v) => {
+            setView(v);
+            setSidebarOpen(false);
+          }}
           onOpenSettings={() => {
             setView("settings");
             setSidebarOpen(false);
           }}
           mobileOpen={sidebarOpen}
           onCloseMobile={() => setSidebarOpen(false)}
+          onSelectSession={(sid) => {
+            setActiveSessionId(sid);
+            setView("chat");
+            void loadMessagesForSession(sid);
+          }}
         />
         <main className="flex min-w-0 flex-1 flex-col">
           <TopBar
@@ -361,7 +361,21 @@ function Shell() {
                   transition={{ duration: 0.25 }}
                   className="absolute inset-0"
                 >
-                  <ProcessesView clis={clis} />
+                  <ProcessesView
+                    clis={clis}
+                    files={ctxFiles}
+                    setFiles={setCtxFiles}
+                    onResyncShared={() => void loadSharedContext()}
+                    onRuntime={(pid, rid) =>
+                      setClis((prev) =>
+                        prev.map((c) =>
+                          c.providerId === pid
+                            ? { ...c, runtimeId: rid, state: rid != null ? "executing" : "idle" }
+                            : c
+                        )
+                      )
+                    }
+                  />
                 </motion.div>
               )}
               {view === "settings" && (
@@ -385,6 +399,7 @@ function Shell() {
                 onSubmit={() => send(chatInput)}
                 onVoice={(t) => send(t)}
                 onPartial={(t) => setChatInput(t)}
+                sessionId={activeSessionId}
               />
             )}
           </div>

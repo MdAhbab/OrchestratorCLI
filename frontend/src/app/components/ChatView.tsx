@@ -32,37 +32,7 @@ export type Msg = {
   artifacts?: { name: string; kind: string }[];
 };
 
-export const INITIAL_MSGS: Msg[] = [
-  {
-    id: "m1",
-    role: "user",
-    content: "Refactor the auth middleware and add tests, plus generate the new login screen — use our design tokens.",
-    ts: "09:42",
-  },
-  {
-    id: "m2",
-    role: "orchestrator",
-    ts: "09:42",
-    content:
-      "Decomposed into 4 subtasks across 4 agents. divisions.md written to workspace context — every agent now knows who is doing what.",
-    thinking: [
-      "classify tasks · NLP confidence 0.94",
-      "match specialties (logic→Claude, ui→Gemini, db→Codex, qa→Copilot)",
-      "check quotas: 4/6 agents have budget headroom",
-      "emit divisions.md → shared context bus",
-    ],
-    divisions: [
-      { agent: "Claude Sonnet 4.6", short: "claude", color: "#f59e0b", task: "Refactor src/middleware/auth.ts", status: "running" },
-      { agent: "Gemini 3 Pro", short: "gemini", color: "#6366f1", task: "Generate Login.tsx with design tokens", status: "running" },
-      { agent: "Codex CLI", short: "codex", color: "#10b981", task: "Update session schema migration", status: "queued" },
-      { agent: "Copilot CLI", short: "copilot", color: "#64748b", task: "Add tests for auth middleware", status: "queued" },
-    ],
-    artifacts: [
-      { name: "divisions.md", kind: "md" },
-      { name: "task-graph.md", kind: "md" },
-    ],
-  },
-];
+export const INITIAL_MSGS: Msg[] = [];
 
 const SUGGESTIONS = [
   { icon: Workflow, label: "Refactor the auth flow across api + web" },

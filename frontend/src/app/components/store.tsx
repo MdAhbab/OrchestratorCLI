@@ -1,10 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { apiPath } from "../lib/api";
 
 export type Status = "online" | "offline" | "limited";
 export type AuthMethod = "api_key" | "oauth" | "ssh" | "bearer" | "account";
 
 export type Provider = {
   id: string;
+  /** SQLite `providers.id` when synced from the backend */
+  dbId?: number;
   name: string;
   glyph: string;
   color: string;
@@ -260,6 +263,201 @@ const DEFAULT_STATE: AppState = {
   ],
 };
 
+type SettingsApiResponse = {
+  preferences?: Record<string, unknown>;
+};
+
+type CliRegistryEntry = {
+  name?: string;
+  slug?: string;
+  description?: string;
+  required?: boolean;
+};
+
+type CliRegistryApiResponse = {
+  clis?: CliRegistryEntry[];
+};
+
+const PROVIDER_BY_CLI_SLUG: Record<string, string> = {
+  "claude-code": "claude",
+  "gemini-cli": "gemini",
+  "codex-cli": "codex",
+  "deepseek": "deepseek",
+  "cline": "cline",
+  "copilot-cli": "copilot",
+  "ibm-bob": "bob",
+};
+
+const ROUTING_STRATEGIES: ReadonlyArray<OrchestratorCfg["routingStrategy"]> = [
+  "specialty",
+  "round_robin",
+  "cheapest",
+  "fastest",
+];
+
+const FONT_SIZES: ReadonlyArray<Prefs["fontSize"]> = ["sm", "md", "lg"];
+
+function applyRemotePreferences(base: AppState, preferences: Record<string, unknown>): AppState {
+  const nextProviders = base.providers.map((provider) => {
+    const prefix = `cli.${provider.id}.`;
+    const rawAuthMethod = preferences[`${prefix}authMethod`];
+    const authMethod: AuthMethod =
+      typeof rawAuthMethod === "string" && provider.authMethods.includes(rawAuthMethod as AuthMethod)
+        ? (rawAuthMethod as AuthMethod)
+        : provider.authMethod;
+    const rawModel = preferences[`${prefix}model`];
+
+    return {
+      ...provider,
+      enabled:
+        typeof preferences[`${prefix}enabled`] === "boolean"
+          ? (preferences[`${prefix}enabled`] as boolean)
+          : provider.enabled,
+      configured:
+        typeof preferences[`${prefix}configured`] === "boolean"
+          ? (preferences[`${prefix}configured`] as boolean)
+          : provider.configured,
+      authMethod,
+      model:
+        typeof rawModel === "string" && provider.models.includes(rawModel)
+          ? rawModel
+          : provider.model,
+      endpoint:
+        typeof preferences[`${prefix}endpoint`] === "string"
+          ? (preferences[`${prefix}endpoint`] as string)
+          : provider.endpoint,
+      accountEmail:
+        typeof preferences[`${prefix}accountEmail`] === "string"
+          ? (preferences[`${prefix}accountEmail`] as string)
+          : provider.accountEmail,
+      accountProvider:
+        typeof preferences[`${prefix}accountProvider`] === "string"
+          ? (preferences[`${prefix}accountProvider`] as string)
+          : provider.accountProvider,
+      accountPlan:
+        typeof preferences[`${prefix}accountPlan`] === "string"
+          ? (preferences[`${prefix}accountPlan`] as string)
+          : provider.accountPlan,
+    };
+  });
+
+  const remoteRouting = preferences["ui.orchestrator.routingStrategy"];
+  const remoteFontSize = preferences["ui.prefs.fontSize"];
+  const workspacePath = preferences["ui.workspace.path"];
+  const workspaceName = preferences["ui.workspace.name"];
+
+  return {
+    ...base,
+    onboarded:
+      typeof preferences["ui.onboarded"] === "boolean"
+        ? (preferences["ui.onboarded"] as boolean)
+        : base.onboarded,
+    workspace:
+      typeof workspacePath === "string" && typeof workspaceName === "string"
+        ? { path: workspacePath, name: workspaceName }
+        : base.workspace,
+    providers: nextProviders,
+    orchestrator: {
+      ...base.orchestrator,
+      model:
+        typeof preferences["ui.orchestrator.model"] === "string"
+          ? (preferences["ui.orchestrator.model"] as string)
+          : base.orchestrator.model,
+      routingStrategy:
+        typeof remoteRouting === "string" &&
+        ROUTING_STRATEGIES.includes(remoteRouting as OrchestratorCfg["routingStrategy"])
+          ? (remoteRouting as OrchestratorCfg["routingStrategy"])
+          : base.orchestrator.routingStrategy,
+      parallelism:
+        typeof preferences["ui.orchestrator.parallelism"] === "number"
+          ? (preferences["ui.orchestrator.parallelism"] as number)
+          : base.orchestrator.parallelism,
+      autoFailover:
+        typeof preferences["ui.orchestrator.autoFailover"] === "boolean"
+          ? (preferences["ui.orchestrator.autoFailover"] as boolean)
+          : base.orchestrator.autoFailover,
+      globalDailyCap:
+        typeof preferences["ui.orchestrator.globalDailyCap"] === "number"
+          ? (preferences["ui.orchestrator.globalDailyCap"] as number)
+          : base.orchestrator.globalDailyCap,
+    },
+    prefs: {
+      ...base.prefs,
+      sound:
+        typeof preferences["ui.prefs.sound"] === "boolean"
+          ? (preferences["ui.prefs.sound"] as boolean)
+          : base.prefs.sound,
+      desktopNotifs:
+        typeof preferences["ui.prefs.desktopNotifs"] === "boolean"
+          ? (preferences["ui.prefs.desktopNotifs"] as boolean)
+          : base.prefs.desktopNotifs,
+      autoSync:
+        typeof preferences["ui.prefs.autoSync"] === "boolean"
+          ? (preferences["ui.prefs.autoSync"] as boolean)
+          : base.prefs.autoSync,
+      fontSize:
+        typeof remoteFontSize === "string" && FONT_SIZES.includes(remoteFontSize as Prefs["fontSize"])
+          ? (remoteFontSize as Prefs["fontSize"])
+          : base.prefs.fontSize,
+    },
+  };
+}
+
+function applyCliRegistry(baseProviders: Provider[], registryEntries: CliRegistryEntry[]): Provider[] {
+  const byProviderId = new Map<string, CliRegistryEntry>();
+  for (const entry of registryEntries) {
+    if (!entry.slug) continue;
+    const providerId = PROVIDER_BY_CLI_SLUG[entry.slug];
+    if (!providerId) continue;
+    byProviderId.set(providerId, entry);
+  }
+
+  return baseProviders.map((provider) => {
+    const entry = byProviderId.get(provider.id);
+    if (!entry) return provider;
+    return {
+      ...provider,
+      name: typeof entry.name === "string" ? entry.name : provider.name,
+      description: typeof entry.description === "string" ? entry.description : provider.description,
+      enabled: entry.required ? true : provider.enabled,
+    };
+  });
+}
+
+function toBackendPreferences(state: AppState): Record<string, unknown> {
+  const preferences: Record<string, unknown> = {
+    "ui.onboarded": state.onboarded,
+    "ui.orchestrator.model": state.orchestrator.model,
+    "ui.orchestrator.routingStrategy": state.orchestrator.routingStrategy,
+    "ui.orchestrator.parallelism": state.orchestrator.parallelism,
+    "ui.orchestrator.autoFailover": state.orchestrator.autoFailover,
+    "ui.orchestrator.globalDailyCap": state.orchestrator.globalDailyCap,
+    "ui.prefs.sound": state.prefs.sound,
+    "ui.prefs.desktopNotifs": state.prefs.desktopNotifs,
+    "ui.prefs.autoSync": state.prefs.autoSync,
+    "ui.prefs.fontSize": state.prefs.fontSize,
+  };
+
+  if (state.workspace) {
+    preferences["ui.workspace.path"] = state.workspace.path;
+    preferences["ui.workspace.name"] = state.workspace.name;
+  }
+
+  for (const provider of state.providers) {
+    const prefix = `cli.${provider.id}.`;
+    preferences[`${prefix}enabled`] = provider.enabled;
+    preferences[`${prefix}configured`] = provider.configured;
+    preferences[`${prefix}authMethod`] = provider.authMethod;
+    preferences[`${prefix}model`] = provider.model;
+    if (provider.endpoint) preferences[`${prefix}endpoint`] = provider.endpoint;
+    if (provider.accountEmail) preferences[`${prefix}accountEmail`] = provider.accountEmail;
+    if (provider.accountProvider) preferences[`${prefix}accountProvider`] = provider.accountProvider;
+    if (provider.accountPlan) preferences[`${prefix}accountPlan`] = provider.accountPlan;
+  }
+
+  return preferences;
+}
+
 function loadInitial(): AppState {
   if (typeof window === "undefined") return DEFAULT_STATE;
   try {
@@ -289,7 +487,7 @@ function loadInitial(): AppState {
  * credentials.
  */
 function mergeProviders(stored: any[]): Provider[] {
-  return DEFAULT_PROVIDERS.map((def) => {
+    return DEFAULT_PROVIDERS.map((def) => {
     const s = stored.find((x) => x?.id === def.id);
     if (!s) return def;
     const authMethod: AuthMethod = def.authMethods.includes(s.authMethod)
@@ -298,6 +496,7 @@ function mergeProviders(stored: any[]): Provider[] {
     return {
       ...def,
       ...s,
+      dbId: typeof s.dbId === "number" ? s.dbId : def.dbId,
       authMethod,
       authMethods: def.authMethods,
       models: def.models,
@@ -307,9 +506,11 @@ function mergeProviders(stored: any[]): Provider[] {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(loadInitial);
+  const [backendHydrated, setBackendHydrated] = useState(false);
 
   /* Debounced persistence — avoids thrashing localStorage on rapid updates. */
   const saveTimer = useRef<number | null>(null);
+  const backendSyncTimer = useRef<number | null>(null);
   useEffect(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -321,6 +522,106 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
   }, [state]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateFromBackend = async () => {
+      try {
+        const response = await fetch(apiPath("/settings"), { cache: "no-store" });
+        if (response.ok) {
+          const payload = (await response.json()) as SettingsApiResponse;
+          if (!cancelled && payload.preferences) {
+            setState((prev) => applyRemotePreferences(prev, payload.preferences as Record<string, unknown>));
+          }
+        }
+      } catch {
+        // Local-first fallback: if backend is unavailable, local settings still work.
+      }
+
+      try {
+        const provRes = await fetch(apiPath("/providers?enabled_only=false"), {
+          cache: "no-store",
+        });
+        if (provRes.ok) {
+          const body = await provRes.json();
+          const rows: {
+            id: number;
+            name: string;
+            display_name: string;
+            is_enabled: boolean | number;
+            default_model: string | null;
+          }[] = body.providers ?? [];
+          if (!cancelled && rows.length) {
+            setState((prev) => ({
+              ...prev,
+              providers: prev.providers.map((p) => {
+                const r = rows.find((x) => x.name === p.id);
+                if (!r) return p;
+                return {
+                  ...p,
+                  dbId: r.id,
+                  name: r.display_name || p.name,
+                  enabled: Boolean(r.is_enabled),
+                  model: (r.default_model as string) || p.model,
+                };
+              }),
+            }));
+          }
+        }
+      } catch {
+        /* optional */
+      }
+
+      try {
+        const response = await fetch(apiPath("/settings/cli-registry"), { cache: "no-store" });
+        if (response.ok) {
+          const payload = (await response.json()) as CliRegistryApiResponse;
+          const clis = Array.isArray(payload.clis) ? payload.clis : [];
+          if (!cancelled && clis.length > 0) {
+            setState((prev) => ({
+              ...prev,
+              providers: applyCliRegistry(prev.providers, clis),
+            }));
+          }
+        }
+      } catch {
+        // Registry sync is optional during local development.
+      }
+
+      if (!cancelled) {
+        setBackendHydrated(true);
+      }
+    };
+
+    void hydrateFromBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!backendHydrated) return;
+    if (!state.prefs.autoSync) {
+      if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+      return;
+    }
+    if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+    backendSyncTimer.current = window.setTimeout(() => {
+      const payload = {
+        preferences: toBackendPreferences(state),
+      };
+      void fetch(apiPath("/settings"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }, 500);
+
+    return () => {
+      if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+    };
+  }, [backendHydrated, state.onboarded, state.workspace, state.providers, state.orchestrator, state.prefs]);
 
   return (
     <StoreCtx.Provider

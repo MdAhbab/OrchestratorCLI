@@ -35,6 +35,7 @@ import {
 import { useStore, type AuthMethod, type Provider } from "./store";
 import { useTheme } from "./theme";
 import { OrchestratorLogo } from "./OrchestratorLogo";
+import { apiPath } from "../lib/api";
 
 const RECENT_FOLDERS = [
   "~/projects/acme-monorepo",
@@ -64,6 +65,8 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [sharedEmail, setSharedEmail] = useState("");
   const [sharedPassword, setSharedPassword] = useState("");
   const [cliCfg, setCliCfg] = useState<Record<string, CliCfg>>({});
+  const [saving, setSaving] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
 
   const cliList = useMemo(
     () => providers.filter((p) => selected.includes(p.id)),
@@ -107,8 +110,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setFolderPath("~/projects/new-workspace");
   };
 
-  const finish = () => {
-    setWorkspace({ path: folderPath, name: folderPath.split("/").pop() || "workspace" });
+  const resolveWorkspacePath = () => {
+    const trimmed = folderPath.trim();
+    if (trimmed) return trimmed;
+    return "~/projects/orchestra-workspace";
+  };
+
+  const finish = async () => {
+    if (saving) return;
+    setFinishError(null);
+    setSaving(true);
+
+    const workspacePath = resolveWorkspacePath();
+    const workspaceName =
+      workspacePath.split(/[/\\]/).filter(Boolean).pop() || "workspace";
+
+    // Optimistically update the in-memory store so the next view renders fast.
+    setWorkspace({ path: workspacePath, name: workspaceName });
     setProviders((prev) =>
       prev.map((p) => {
         if (!selected.includes(p.id)) return { ...p, enabled: false };
@@ -135,6 +153,81 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         };
       })
     );
+
+    // Persist to the backend (encrypted credentials, enabled flags, prefs).
+    try {
+      const cli_configs: Record<string, any> = {};
+      for (const id of selected) {
+        const c = cliCfg[id];
+        if (!c) continue;
+        const effectiveEmail =
+          c.method === "account"
+            ? (c.override ? c.email.trim() : sharedEmail.trim())
+            : undefined;
+        const provider = providers.find((p) => p.id === id);
+        const secret =
+          c.method === "api_key" || c.method === "bearer"
+            ? c.secret.trim()
+            : c.method === "account"
+            ? (c.override ? c.password.trim() : sharedPassword.trim())
+            : "";
+        cli_configs[id] = {
+          method: c.method,
+          email: effectiveEmail,
+          accountEmail: effectiveEmail,
+          accountProvider: provider?.accountProvider,
+          accountPlan:
+            c.method === "account"
+              ? `${provider?.accountProvider || provider?.name || id} plan`
+              : undefined,
+          secret: secret || undefined,
+          endpoint: c.method === "ssh" ? c.endpoint : provider?.endpoint,
+          keyPath: c.method === "ssh" ? c.keyPath : undefined,
+          model: c.model,
+        };
+      }
+
+      const res = await fetch(apiPath("/onboarding/complete"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspace: {
+            path: workspacePath,
+            name: workspaceName,
+          },
+          selected,
+          cli_configs,
+          shared_email: sharedEmail.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        console.error("onboarding persist failed", detail);
+        let message = `Could not save setup (HTTP ${res.status}).`;
+        try {
+          const parsed = JSON.parse(detail) as { detail?: string | { msg?: string }[] };
+          if (typeof parsed.detail === "string") message = parsed.detail;
+          else if (Array.isArray(parsed.detail) && parsed.detail[0]?.msg) {
+            message = parsed.detail.map((d) => d.msg).join("; ");
+          }
+        } catch {
+          if (detail) message = detail.slice(0, 240);
+        }
+        setFinishError(
+          `${message} Is the backend running? Start it with: python run.py`
+        );
+        return;
+      }
+    } catch (err) {
+      console.error("onboarding persist failed:", err);
+      setFinishError(
+        "Could not reach the backend. Start it with: python run.py (backend should listen on port 8000)."
+      );
+      return;
+    } finally {
+      setSaving(false);
+    }
+
     setOnboarded(true);
     onDone();
   };
@@ -249,10 +342,12 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               )}
               {step === 5 && (
                 <StepReview
-                  workspace={folderPath}
+                  workspace={resolveWorkspacePath()}
                   enabled={selected.map((id) => providers.find((p) => p.id === id)!)}
                   cliCfg={cliCfg}
                   sharedEmail={sharedEmail}
+                  saving={saving}
+                  error={finishError}
                   onBack={() => setStep(4)}
                   onFinish={finish}
                 />
@@ -1006,6 +1101,8 @@ function StepReview({
   enabled,
   cliCfg,
   sharedEmail,
+  saving,
+  error,
   onBack,
   onFinish,
 }: {
@@ -1013,6 +1110,8 @@ function StepReview({
   enabled: Provider[];
   cliCfg: Record<string, CliCfg>;
   sharedEmail: string;
+  saving?: boolean;
+  error?: string | null;
   onBack: () => void;
   onFinish: () => void;
 }) {
@@ -1066,12 +1165,19 @@ function StepReview({
         </div>
       </div>
 
+      {error && (
+        <motion.div className="mt-4 rounded-lg border border-rose-300/60 bg-rose-50/80 px-3 py-2.5 text-[12px] leading-relaxed text-rose-800 dark:border-rose-400/30 dark:bg-rose-950/40 dark:text-rose-200">
+          {error}
+        </motion.div>
+      )}
+
       <div className="mt-8 flex justify-between">
-        <GhostBtn onClick={onBack}>
+        <GhostBtn onClick={onBack} disabled={saving}>
           <ArrowLeft className="h-3.5 w-3.5" /> Back
         </GhostBtn>
-        <PrimaryBtn onClick={onFinish}>
-          Launch Orchestrator <Rocket className="h-3.5 w-3.5" />
+        <PrimaryBtn onClick={onFinish} disabled={saving}>
+          {saving ? "Saving…" : "Launch Orchestrator"}{" "}
+          {!saving && <Rocket className="h-3.5 w-3.5" />}
         </PrimaryBtn>
       </div>
     </div>
@@ -1103,6 +1209,7 @@ function PrimaryBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className="flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-2 text-[12.5px] text-white shadow-sm transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
@@ -1112,11 +1219,21 @@ function PrimaryBtn({
   );
 }
 
-function GhostBtn({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function GhostBtn({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-lg border border-zinc-200/70 bg-white px-3 py-2 text-[12px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
+      disabled={disabled}
+      className="flex items-center gap-1.5 rounded-lg border border-zinc-200/70 bg-white px-3 py-2 text-[12px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
     >
       {children}
     </button>
