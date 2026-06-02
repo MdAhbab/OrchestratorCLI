@@ -645,80 +645,37 @@ class ProcessManager:
                 universal_newlines=True
             )
             
-            # Wait and collect startup output to detect errors
-            print_info("Waiting for backend to start (timeout: 10 seconds)...")
-            startup_output = []
-            start_time = time.time()
-            timeout = 10
+            # Start backend output reader early so we don't block
+            self._start_output_reader("Backend", self.backend_process.stdout)
             
-            while time.time() - start_time < timeout:
-                # Check if process has terminated
+            print_info("Waiting for backend to start (timeout: 10 seconds)...")
+            
+            if not self.wait_for_backend_health(host, self.backend_port, timeout=10):
+                print_error("Backend server failed to start or become healthy!")
                 poll_result = self.backend_process.poll()
                 if poll_result is not None:
-                    # Process terminated - collect all remaining output
-                    if self.backend_process.stdout:
-                        remaining_stdout = self.backend_process.stdout.read()
-                        if remaining_stdout:
-                            startup_output.append(remaining_stdout)
-                    
-                    # Display the error
-                    print_error("Backend server failed to start!")
                     print_error(f"Exit code: {poll_result}")
-                    
-                    if startup_output:
-                        print_error("\n" + "="*70)
-                        print_error("BACKEND ERROR OUTPUT:")
-                        print_error("="*70)
-                        full_output = ''.join(startup_output)
-                        print(f"{Colors.FAIL}{full_output}{Colors.ENDC}")
-                        print_error("="*70 + "\n")
-                    else:
-                        print_error("No error output captured. Process terminated immediately.")
-                    
-                    return False
                 
-                # Collect output lines
-                if self.backend_process.stdout:
-                    try:
-                        line = self.backend_process.stdout.readline()
-                        if line:
-                            startup_output.append(line)
-                            # Check for successful startup indicators
-                            if "Uvicorn running on" in line or "Application startup complete" in line:
-                                if not self.wait_for_backend_health(host, self.backend_port):
-                                    return False
-                                print_success(f"Backend server started (PID: {self.backend_process.pid})")
-                                print_info(f"API Documentation: http://{host}:{self.backend_port}/docs")
-                                print_info(f"Health Check: http://{host}:{self.backend_port}/health")
-                                return True
-                    except:
-                        pass
+                # Try to dump any startup errors captured in the queue
+                errors = []
+                while not self.output_queue.empty():
+                    label, line = self.output_queue.get_nowait()
+                    if label == "Backend":
+                        errors.append(line)
                 
-                time.sleep(0.1)
-            
-            # Timeout reached - check if process is still running
-            if self.backend_process.poll() is None:
-                # Process is running but didn't show startup message
-                print_warning("Backend process started but no startup confirmation received")
-                print_info("Waiting for backend health endpoint...")
-                if not self.wait_for_backend_health(host, self.backend_port):
-                    return False
-                print_success(f"Backend server started (PID: {self.backend_process.pid})")
-                print_info(f"API Documentation: http://{host}:{self.backend_port}/docs")
-                print_info(f"Health Check: http://{host}:{self.backend_port}/health")
-                return True
-            else:
-                # Process died during timeout
-                print_error("Backend server failed to start (timeout)")
-                if startup_output:
+                if errors:
                     print_error("\n" + "="*70)
                     print_error("BACKEND ERROR OUTPUT:")
                     print_error("="*70)
-                    full_output = ''.join(startup_output)
-                    print(f"{Colors.FAIL}{full_output}{Colors.ENDC}")
+                    for err in errors:
+                        print(f"{Colors.FAIL}{err}{Colors.ENDC}")
                     print_error("="*70 + "\n")
-                
                 return False
+                
+            print_success(f"Backend server started (PID: {self.backend_process.pid})")
+            print_info(f"API Documentation: http://{host}:{self.backend_port}/docs")
+            print_info(f"Health Check: http://{host}:{self.backend_port}/health")
+            return True
             
         except Exception as e:
             print_error(f"Failed to start backend: {e}")
