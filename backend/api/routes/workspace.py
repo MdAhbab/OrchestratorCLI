@@ -17,9 +17,7 @@ import logging
 from pathlib import Path
 
 
-def utc_now() -> datetime:
-    """Return current UTC datetime with timezone info."""
-    return datetime.now(timezone.utc)
+from backend.utils import utc_now
 
 from backend.database.models import (
     ContextFile, ContextFileCreate, SessionArtifact,

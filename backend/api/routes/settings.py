@@ -5,18 +5,14 @@ Handles user preferences and settings.
 
 from typing import Dict, Any, List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from datetime import datetime, timezone
+from datetime import datetime
 from pydantic import BaseModel
 import aiosqlite
 import json
 import shutil
 from pathlib import Path
 
-
-def utc_now() -> datetime:
-    """Return current UTC datetime with timezone info."""
-    return datetime.now(timezone.utc)
-
+from backend.utils import utc_now
 from backend.database.models import (
     UserPreference, UserPreferenceCreate, UserPreferenceUpdate,
     PreferenceType
@@ -50,7 +46,7 @@ class BulkPreferenceUpdate(BaseModel):
 
 class CliRegistryResponse(BaseModel):
     """Response model for installer CLI registry."""
-    version: str
+    version: Optional[str] = None
     last_updated: Optional[str] = None
     clis: List[Dict[str, Any]]
 
@@ -207,8 +203,7 @@ async def get_cli_registry() -> CliRegistryResponse:
     """
     registry_path = (
         Path(__file__).resolve().parents[3]
-        / "release"
-        / "installer"
+        / "packaging"
         / "bootstrapper"
         / "cli_registry.json"
     )
@@ -245,7 +240,7 @@ async def get_cli_registry() -> CliRegistryResponse:
 
     version = payload.get("version")
     return CliRegistryResponse(
-        version=str(version) if version is not None else "unknown",
+        version=str(version) if version is not None else None,
         last_updated=str(payload.get("last_updated")) if payload.get("last_updated") is not None else None,
         clis=clis
     )
@@ -288,11 +283,11 @@ async def get_settings(
 ) -> SettingsResponse:
     """
     Get all user settings.
-    
+
     Args:
         db: Database connection
         user_id: Current user ID
-        
+
     Returns:
         User settings organized by category
     """
@@ -306,11 +301,11 @@ async def get_settings(
         (user_id,)
     )
     rows = await cursor.fetchall()
-    
+
     # Build preferences dict
     preferences = {}
     categories = {}
-    
+
     for row in rows:
         key = row["preference_key"]
         value = parse_preference_value(
@@ -318,21 +313,21 @@ async def get_settings(
             PreferenceType(row["preference_type"])
         )
         category = row["category"] or "general"
-        
+
         preferences[key] = value
-        
+
         if category not in categories:
             categories[category] = []
         categories[category].append(key)
-    
+
     # If no preferences exist, return defaults
     if not preferences:
-        # Flatten default settings
-        for category, settings in DEFAULT_SETTINGS.items():
-            categories[category] = list(settings.keys())
-            for key, value in settings.items():
+        # Flatten default settings; use cat_settings to avoid shadowing app_settings
+        for category, cat_settings in DEFAULT_SETTINGS.items():
+            categories[category] = list(cat_settings.keys())
+            for key, value in cat_settings.items():
                 preferences[f"{category}.{key}"] = value
-    
+
     return SettingsResponse(
         preferences=preferences,
         categories=categories
@@ -383,15 +378,15 @@ async def get_preference(
 ) -> PreferenceResponse:
     """
     Get a specific preference by key.
-    
+
     Args:
         preference_key: Preference key
         db: Database connection
         user_id: Current user ID
-        
+
     Returns:
         Preference value
-        
+
     Raises:
         HTTPException: If preference not found
     """
@@ -404,16 +399,16 @@ async def get_preference(
         (user_id, preference_key)
     )
     row = await cursor.fetchone()
-    
+
     if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preference '{preference_key}' not found"
         )
-    
+
     pref_type = PreferenceType(row["preference_type"])
     value = parse_preference_value(row["preference_value"], pref_type)
-    
+
     return PreferenceResponse(
         key=row["preference_key"],
         value=value,
@@ -430,32 +425,32 @@ async def update_settings(
 ) -> SettingsResponse:
     """
     Update multiple settings at once.
-    
+
     Args:
         updates: Bulk preference updates
         db: Database connection
         user_id: Current user ID
-        
+
     Returns:
         Updated settings
     """
     now = utc_now()
-    
+
     for key, value in updates.preferences.items():
         # Determine category from key (e.g., "theme.mode" -> "theme")
         parts = key.split('.', 1)
         category = parts[0] if len(parts) > 1 else "general"
-        
+
         # Serialize value
         serialized_value, pref_type = serialize_preference_value(value)
-        
+
         # Check if preference exists
         cursor = await db.execute(
             "SELECT id FROM user_preferences WHERE user_id = ? AND preference_key = ?",
             (user_id, key)
         )
         existing = await cursor.fetchone()
-        
+
         if existing:
             # Update existing preference
             await db.execute(
@@ -481,9 +476,9 @@ async def update_settings(
                     now.isoformat(), now.isoformat()
                 )
             )
-    
+
     await db.commit()
-    
+
     # Return updated settings
     return await get_settings(db, user_id)
 
@@ -497,32 +492,32 @@ async def update_preference(
 ) -> PreferenceResponse:
     """
     Update a single preference.
-    
+
     Args:
         preference_key: Preference key
         value: New value
         db: Database connection
         user_id: Current user ID
-        
+
     Returns:
         Updated preference
     """
     now = utc_now()
-    
+
     # Determine category from key
     parts = preference_key.split('.', 1)
     category = parts[0] if len(parts) > 1 else "general"
-    
+
     # Serialize value
     serialized_value, pref_type = serialize_preference_value(value)
-    
+
     # Check if preference exists
     cursor = await db.execute(
         "SELECT id FROM user_preferences WHERE user_id = ? AND preference_key = ?",
         (user_id, preference_key)
     )
     existing = await cursor.fetchone()
-    
+
     if existing:
         # Update existing preference
         await db.execute(
@@ -548,9 +543,9 @@ async def update_preference(
                 now.isoformat(), now.isoformat()
             )
         )
-    
+
     await db.commit()
-    
+
     return PreferenceResponse(
         key=preference_key,
         value=value,
@@ -566,11 +561,11 @@ async def reset_settings(
 ) -> SettingsResponse:
     """
     Reset all settings to defaults.
-    
+
     Args:
         db: Database connection
         user_id: Current user ID
-        
+
     Returns:
         Default settings
     """
@@ -579,15 +574,15 @@ async def reset_settings(
         "DELETE FROM user_preferences WHERE user_id = ?",
         (user_id,)
     )
-    
+
     # Insert default preferences
     now = utc_now()
-    
-    for category, settings in DEFAULT_SETTINGS.items():
-        for key, value in settings.items():
+
+    for category, cat_settings in DEFAULT_SETTINGS.items():
+        for key, value in cat_settings.items():
             full_key = f"{category}.{key}"
             serialized_value, pref_type = serialize_preference_value(value)
-            
+
             await db.execute(
                 """
                 INSERT INTO user_preferences (
@@ -601,9 +596,9 @@ async def reset_settings(
                     now.isoformat(), now.isoformat()
                 )
             )
-    
+
     await db.commit()
-    
+
     # Return default settings
     return await get_settings(db, user_id)
 
@@ -616,12 +611,12 @@ async def delete_preference(
 ):
     """
     Delete a specific preference.
-    
+
     Args:
         preference_key: Preference key
         db: Database connection
         user_id: Current user ID
-        
+
     Raises:
         HTTPException: If preference not found
     """
@@ -630,10 +625,9 @@ async def delete_preference(
         (user_id, preference_key)
     )
     await db.commit()
-    
+
     if cursor.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preference '{preference_key}' not found"
         )
-

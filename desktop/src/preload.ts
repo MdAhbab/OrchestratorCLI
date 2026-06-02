@@ -19,6 +19,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   /** Tell the main process to quit-and-install */
   installUpdate: () => ipcRenderer.send("update-install-now"),
-  /** Current app version */
-  appVersion: process.env.npm_package_version ?? "0.8.0",
+  /**
+   * Current app version — retrieved synchronously from the main process via IPC
+   * because process.env.npm_package_version is not available in packaged apps.
+   */
+  appVersion: (() => {
+    try {
+      const v = ipcRenderer.sendSync("app-version") as string;
+      return typeof v === "string" && v ? v : "0.8.0";
+    } catch {
+      return "0.8.0";
+    }
+  })(),
 });

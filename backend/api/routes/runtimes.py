@@ -560,8 +560,12 @@ async def approve_pending_command(
     
     await db.commit()
     
-    # Return updated runtime
-    return await get_runtime(runtime_id, False, db, user_id)
+    return await get_runtime(
+        runtime_id=runtime_id,
+        include_logs=False,
+        db=db,
+        user_id=user_id,
+    )
 
 
 @router.post("", response_model=CLIRuntime, status_code=status.HTTP_201_CREATED)
@@ -698,7 +702,12 @@ async def update_runtime(
         params.append(runtime_update.exit_code)
     
     if not update_fields:
-        return await get_runtime(runtime_id, False, db, user_id)
+        return await get_runtime(
+            runtime_id=runtime_id,
+            include_logs=False,
+            db=db,
+            user_id=user_id,
+        )
     
     params.append(runtime_id)
     
@@ -708,7 +717,12 @@ async def update_runtime(
     )
     await db.commit()
     
-    return await get_runtime(runtime_id, False, db, user_id)
+    return await get_runtime(
+        runtime_id=runtime_id,
+        include_logs=False,
+        db=db,
+        user_id=user_id,
+    )
 
 
 @router.delete("/{runtime_id:int}", status_code=status.HTTP_204_NO_CONTENT)
@@ -742,7 +756,12 @@ async def pause_runtime(
         (runtime_id,),
     )
     await db.commit()
-    return await get_runtime(runtime_id, False, db, user_id)
+    return await get_runtime(
+        runtime_id=runtime_id,
+        include_logs=False,
+        db=db,
+        user_id=user_id,
+    )
 
 
 @router.post("/{runtime_id:int}/resume", response_model=CLIRuntime)
@@ -760,5 +779,10 @@ async def resume_runtime(
         (runtime_id,),
     )
     await db.commit()
-    return await get_runtime(runtime_id, False, db, user_id)
+    return await get_runtime(
+        runtime_id=runtime_id,
+        include_logs=False,
+        db=db,
+        user_id=user_id,
+    )
 

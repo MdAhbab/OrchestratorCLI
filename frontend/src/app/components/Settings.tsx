@@ -742,12 +742,11 @@ function TerminalsPanel({ clis }: { clis: CliRuntime[] }) {
 }
 
 const ORCH_MODELS = ["grok-3", "grok-3-mini", "gemini-2.5-pro", "deepseek-chat"] as const;
-const ROUTING = ["specialty", "round_robin", "cheapest", "fastest"] as const;
+const ROUTING = ["specialty", "round_robin", "cheapest"] as const;
 const ROUTING_LABELS: Record<string, string> = {
   specialty: "Specialty-based (recommended)",
   round_robin: "Round-robin",
   cheapest: "Cheapest first",
-  fastest: "Fastest p95",
 };
 
 function OrchestratorPanel() {

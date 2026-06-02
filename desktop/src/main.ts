@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   nativeImage,
   shell,
@@ -131,6 +132,12 @@ async function shutdown(): Promise<void> {
 }
 
 const gotLock = app.requestSingleInstanceLock();
+
+// Expose app version synchronously to preload via ipcRenderer.sendSync
+ipcMain.on("app-version", (event) => {
+  event.returnValue = app.getVersion();
+});
+
 if (!gotLock) {
   app.quit();
 } else {
