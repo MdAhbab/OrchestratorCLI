@@ -16,15 +16,14 @@ export async function fetchSessionEntries(limit = 20): Promise<SessionEntry[]> {
   if (!sessionsRes.ok) return [];
 
   const j = await sessionsRes.json();
-  let totalTokens = 0;
-  let totalCost = 0;
+  let usageBySession: Record<string, { cost?: number; tokens?: number }> = {};
   if (usageRes.ok) {
     const usage = await usageRes.json();
-    totalTokens = Number(usage.total_tokens ?? 0);
-    totalCost = Number(usage.total_cost ?? 0);
+    if (usage?.sessions && typeof usage.sessions === "object") {
+      usageBySession = usage.sessions;
+    }
   }
 
-  const sessionCount = Math.max(1, (j.sessions ?? []).length);
   return (j.sessions ?? []).map((s: any) => {
     let meta = s.metadata;
     if (meta && typeof meta === "string") {
@@ -34,6 +33,7 @@ export async function fetchSessionEntries(limit = 20): Promise<SessionEntry[]> {
         meta = {};
       }
     }
+    const usage = usageBySession[String(s.id)] ?? {};
     return {
       id: String(s.id),
       prompt: s.title ?? "(untitled session)",
@@ -42,8 +42,8 @@ export async function fetchSessionEntries(limit = 20): Promise<SessionEntry[]> {
       endedAt: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
       summary: s.description ?? "",
       agents: Array.isArray(meta?.delegated_agents) ? meta.delegated_agents : [],
-      spend: totalCost / sessionCount,
-      tokens: Math.round(totalTokens / sessionCount),
+      spend: Number(usage.cost ?? 0),
+      tokens: Math.round(Number(usage.tokens ?? 0)),
       artifacts: Array.isArray(meta?.artifacts)
         ? meta.artifacts.map((a: any) => a.name ?? String(a))
         : [],

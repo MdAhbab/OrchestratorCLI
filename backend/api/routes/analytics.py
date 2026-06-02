@@ -41,6 +41,10 @@ class UsageStatsResponse(BaseModel):
         default_factory=dict,
         description="Per provider display_name: cost, tokens, events",
     )
+    sessions: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Per session id: cost, tokens, events, messages",
+    )
 
 
 class RoutingHistoryResponse(BaseModel):
@@ -214,6 +218,58 @@ async def get_usage_statistics(
         if int(row["tok"] or 0) > int(entry.get("tokens") or 0):
             entry["tokens"] = int(row["tok"] or 0)
 
+    # Per-session spend/tokens for session history. Do not average global totals:
+    # an empty or cheap session should not inherit spend from other sessions.
+    cursor = await db.execute(
+        """
+        SELECT
+            s.id AS session_id,
+            COALESCE(SUM(ua.cost_estimate), 0) AS cost,
+            COALESCE(SUM(ua.tokens_used), 0) AS tokens,
+            COUNT(ua.id) AS events
+        FROM sessions s
+        LEFT JOIN usage_analytics ua
+          ON ua.session_id = s.id
+         AND ua.user_id = ?
+         AND ua.created_at >= ?
+        WHERE s.user_id = ? AND s.created_at >= ?
+        GROUP BY s.id
+        """,
+        (user_id, start_date.isoformat(), user_id, start_date.isoformat()),
+    )
+    sessions_map: Dict[str, Dict[str, Any]] = {}
+    for row in await cursor.fetchall():
+        sessions_map[str(row["session_id"])] = {
+            "cost": float(row["cost"] or 0),
+            "tokens": int(row["tokens"] or 0),
+            "events": int(row["events"] or 0),
+            "messages": 0,
+        }
+
+    cursor = await db.execute(
+        """
+        SELECT
+            s.id AS session_id,
+            COUNT(m.id) AS messages,
+            COALESCE(SUM(m.tokens_used), 0) AS tokens
+        FROM sessions s
+        LEFT JOIN messages m
+          ON m.session_id = s.id
+         AND m.created_at >= ?
+        WHERE s.user_id = ? AND s.created_at >= ?
+        GROUP BY s.id
+        """,
+        (start_date.isoformat(), user_id, start_date.isoformat()),
+    )
+    for row in await cursor.fetchall():
+        entry = sessions_map.setdefault(
+            str(row["session_id"]),
+            {"cost": 0.0, "tokens": 0, "events": 0, "messages": 0},
+        )
+        entry["messages"] = int(row["messages"] or 0)
+        if int(row["tokens"] or 0) > int(entry.get("tokens") or 0):
+            entry["tokens"] = int(row["tokens"] or 0)
+
     return UsageStatsResponse(
         total_sessions=total_sessions,
         total_messages=total_messages,
@@ -226,6 +282,7 @@ async def get_usage_statistics(
         start_date=start_date,
         end_date=end_date,
         providers=providers_map,
+        sessions=sessions_map,
     )
 
 

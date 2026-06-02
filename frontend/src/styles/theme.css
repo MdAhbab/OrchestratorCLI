@@ -2,6 +2,9 @@
 
 :root {
   --font-size: 16px;
+  --app-accent: #6366f1;
+  --app-accent-soft: #6366f11a;
+  --app-accent-ring: #6366f166;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;

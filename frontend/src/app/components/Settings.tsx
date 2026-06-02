@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Bell,
@@ -22,13 +23,14 @@ import {
   Trash2,
   Type,
 } from "lucide-react";
-import { useStore, type AuthMethod, type Provider } from "./store";
+import { ACCENT_COLORS, useStore, type AuthMethod, type Provider } from "./store";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import { useTheme } from "./theme";
 import { Dropdown } from "./Sidebar";
 import { TerminalCard, type CliRuntime } from "./TerminalCard";
 import { ContextDropzone, INITIAL_CTX, type CtxFile } from "./ContextDropzone";
 import { apiFetch, apiPath } from "../lib/api";
+import { orchestratorToApiPayload } from "../lib/orchestratorConfig";
 import { CliInstallHint } from "./CliInstallHint";
 import { SessionHistory } from "./SessionHistory";
 
@@ -191,8 +193,9 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
     <button
       onClick={() => onChange(!on)}
       className={`relative h-5 w-9 rounded-full transition ${
-        on ? "bg-indigo-500" : "bg-zinc-300 dark:bg-white/15"
+        on ? "" : "bg-zinc-300 dark:bg-white/15"
       }`}
+      style={on ? { backgroundColor: "var(--app-accent)" } : undefined}
     >
       <motion.span
         layout
@@ -202,6 +205,57 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
         }`}
       />
     </button>
+  );
+}
+
+async function saveSettingsPreferences(
+  preferences: Record<string, unknown>,
+  successMessage: string,
+) {
+  try {
+    const res = await apiFetch("/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferences }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    toast.success(successMessage);
+    return true;
+  } catch (err) {
+    console.error(err);
+    toast.error("Could not save settings.");
+    return false;
+  }
+}
+
+function ApplyButton({
+  onClick,
+  label = "Apply changes",
+}: {
+  onClick: () => Promise<unknown> | unknown;
+  label?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mt-4 flex justify-end">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onClick();
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] text-white shadow-sm transition disabled:opacity-50"
+        style={{ backgroundColor: "var(--app-accent)" }}
+      >
+        <Save className="h-3 w-3" />
+        {busy ? "Saving..." : label}
+      </button>
+    </div>
   );
 }
 
@@ -216,14 +270,30 @@ function GeneralPanel() {
         <Row title="Workspace folder" desc={workspace?.path || "Not set"}>
           <button
             onClick={async () => {
+              const saveManualPath = (hint?: string) => {
+                const value = window.prompt(
+                  hint
+                    ? `Selected "${hint}". Paste the full folder path so the backend can use it.`
+                    : "Paste the full workspace folder path.",
+                  workspace?.path || "",
+                );
+                const path = value?.trim();
+                if (!path) return;
+                const name = path.split(/[/\\]/).filter(Boolean).pop() || hint || "workspace";
+                setWorkspace({ path, name });
+              };
               try {
                 // @ts-ignore
                 if (window.showDirectoryPicker) {
                   // @ts-ignore
                   const h = await window.showDirectoryPicker();
-                  setWorkspace({ path: `~/${h.name}`, name: h.name });
+                  saveManualPath(h?.name || "workspace");
+                  return;
                 }
-              } catch {}
+              } catch {
+                return;
+              }
+              saveManualPath();
             }}
             className="rounded-md border border-zinc-200/70 bg-white px-3 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
           >
@@ -259,16 +329,41 @@ function GeneralPanel() {
         </Row>
         <Row title="Editor accent" desc="Used for primary buttons & highlights">
           <div className="flex items-center gap-1.5">
-            {["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#a855f7"].map((c) => (
+            {ACCENT_COLORS.map((c) => {
+              const active = prefs.accentColor === c;
+              return (
               <button
                 key={c}
-                className="h-5 w-5 rounded-full ring-2 ring-transparent transition hover:ring-zinc-300 dark:hover:ring-white/30"
-                style={{ background: c }}
-              />
-            ))}
+                type="button"
+                aria-pressed={active}
+                title={`Use ${c} accent`}
+                onClick={() => setPrefs((p) => ({ ...p, accentColor: c }))}
+                className="flex h-5 w-5 items-center justify-center rounded-full ring-2 transition hover:ring-zinc-300 dark:hover:ring-white/30"
+                style={{
+                  background: c,
+                  boxShadow: active ? `0 0 0 2px ${c}66` : undefined,
+                }}
+              >
+                {active && <Check className="h-3 w-3 text-white drop-shadow" />}
+              </button>
+              );
+            })}
           </div>
         </Row>
       </div>
+      <ApplyButton
+        onClick={() =>
+          saveSettingsPreferences(
+            {
+              "ui.prefs.fontSize": prefs.fontSize,
+              "ui.prefs.accentColor": prefs.accentColor,
+              "ui.workspace.path": workspace?.path ?? "",
+              "ui.workspace.name": workspace?.name ?? "",
+            },
+            "General settings saved.",
+          )
+        }
+      />
     </>
   );
 }
@@ -297,7 +392,12 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);
   const [secret, setSecret] = useState("");
+  const [hasStoredCredential, setHasStoredCredential] = useState(p.configured);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setHasStoredCredential(p.configured);
+  }, [p.configured]);
 
   useEffect(() => {
     if (!open || !p.dbId) return;
@@ -309,9 +409,13 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
           const j = await r.json();
           const key = (j.api_key as string) || "";
           setSecret(key === "***" ? "" : key);
+          setHasStoredCredential(Boolean(j.has_credentials));
         }
       } catch {
-        if (!cancelled) setSecret("");
+        if (!cancelled) {
+          setSecret("");
+          setHasStoredCredential(p.configured);
+        }
       }
     })();
     return () => {
@@ -345,11 +449,16 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
     if (!p.dbId) return;
     setBusy(true);
     try {
-      await apiFetch(`/providers/${p.dbId}`, {
+      const providerRes = await apiFetch(`/providers/${p.dbId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_enabled: p.enabled, default_model: p.model }),
       });
+      if (!providerRes.ok) {
+        throw new Error(await providerRes.text());
+      }
+
+      let nextConfigured = p.configured;
       if (
         (p.authMethod === "api_key" || p.authMethod === "bearer") &&
         secret.trim() &&
@@ -365,8 +474,10 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
           }),
         });
         if (!r.ok) {
-          console.warn("credential save failed", await r.text());
+          throw new Error(await r.text());
         }
+        nextConfigured = true;
+        setHasStoredCredential(true);
       } else if (p.authMethod === "account" && p.accountEmail?.trim()) {
         const r = await apiFetch(`/providers/${p.dbId}/credentials`, {
           method: "POST",
@@ -377,12 +488,24 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
           }),
         });
         if (!r.ok) {
-          console.warn("account credential save failed", await r.text());
+          throw new Error(await r.text());
         }
+        nextConfigured = true;
+        setHasStoredCredential(true);
+      } else if (p.authMethod === "account") {
+        nextConfigured = false;
+      } else if (p.authMethod === "api_key" || p.authMethod === "bearer") {
+        nextConfigured = hasStoredCredential || p.configured;
+      } else if (p.authMethod === "ssh") {
+        nextConfigured = Boolean(p.endpoint?.trim()) || p.configured;
+      } else if (p.authMethod === "oauth") {
+        nextConfigured = p.configured;
       }
-      onChange({ ...p, configured: !!(p.authMethod === "account" ? p.accountEmail : secret) });
+      onChange({ ...p, configured: nextConfigured });
+      toast.success(`${p.name} settings saved.`);
     } catch (e) {
       console.error(e);
+      toast.error(`Could not save ${p.name} settings.`);
     } finally {
       setBusy(false);
     }
@@ -397,9 +520,12 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
     try {
       await apiFetch(`/providers/${p.dbId}/credentials`, { method: "DELETE" });
       setSecret("");
+      setHasStoredCredential(false);
       onChange({ ...p, configured: false });
+      toast.success(`${p.name} credentials revoked.`);
     } catch (e) {
       console.error(e);
+      toast.error(`Could not revoke ${p.name} credentials.`);
     } finally {
       setBusy(false);
     }
@@ -717,6 +843,31 @@ function OrchestratorPanel() {
           </button>
         </Row>
       </div>
+      <ApplyButton
+        onClick={async () => {
+          try {
+            const res = await apiFetch("/orchestrator/config", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(orchestratorToApiPayload(orchestrator)),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            await saveSettingsPreferences(
+              {
+                "ui.orchestrator.model": orchestrator.model,
+                "ui.orchestrator.routingStrategy": orchestrator.routingStrategy,
+                "ui.orchestrator.parallelism": orchestrator.parallelism,
+                "ui.orchestrator.autoFailover": orchestrator.autoFailover,
+                "ui.orchestrator.globalDailyCap": orchestrator.globalDailyCap,
+              },
+              "Orchestrator settings saved.",
+            );
+          } catch (err) {
+            console.error(err);
+            toast.error("Could not save orchestrator settings.");
+          }
+        }}
+      />
     </>
   );
 }
@@ -769,6 +920,16 @@ function ContextPanel() {
       <div className="h-[420px] overflow-hidden rounded-xl border border-zinc-200/70 bg-white/60 dark:border-white/[0.06] dark:bg-zinc-950/40">
         <ContextDropzone files={files} setFiles={setFiles} onDeleteFile={deleteContextFile} />
       </div>
+      <ApplyButton
+        onClick={() =>
+          saveSettingsPreferences(
+            {
+              "ui.prefs.autoSync": prefs.autoSync,
+            },
+            "Context settings saved.",
+          )
+        }
+      />
     </>
   );
 }
@@ -797,6 +958,17 @@ function NotificationsPanel() {
           <Toggle on={true} onChange={() => {}} />
         </Row>
       </div>
+      <ApplyButton
+        onClick={() =>
+          saveSettingsPreferences(
+            {
+              "ui.prefs.sound": prefs.sound,
+              "ui.prefs.desktopNotifs": prefs.desktopNotifs,
+            },
+            "Notification settings saved.",
+          )
+        }
+      />
     </>
   );
 }

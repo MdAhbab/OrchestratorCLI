@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Eye,
   EyeOff,
   Folder,
   FolderOpen,
@@ -107,17 +108,28 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       if (window.showDirectoryPicker) {
         // @ts-ignore
         const handle = await window.showDirectoryPicker();
-        setPickedFolderName(handle?.name || "");
+        const name = handle?.name || "";
+        setPickedFolderName(name);
+        const value = window.prompt(
+          name
+            ? `Selected "${name}". Paste the full folder path so the backend can use it.`
+            : "Paste the full workspace folder path.",
+          folderPath,
+        );
+        if (value?.trim()) {
+          setFolderPath(value.trim());
+        }
         return;
       }
     } catch {}
-    setFolderPath("~/projects/new-workspace");
+    const value = window.prompt("Paste the full workspace folder path.", folderPath);
+    if (value?.trim()) setFolderPath(value.trim());
   };
 
   const resolveWorkspacePath = () => {
     const trimmed = folderPath.trim();
     if (trimmed) return trimmed;
-    return "~/projects/orchestra-workspace";
+    return "";
   };
 
   const handleFolderPathChange = (value: string) => {
@@ -131,6 +143,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setSaving(true);
 
     const workspacePath = resolveWorkspacePath();
+    if (!workspacePath) {
+      setFinishError("Choose a workspace folder path first.");
+      setSaving(false);
+      return;
+    }
     const workspaceName =
       workspacePath.split(/[/\\]/).filter(Boolean).pop() || "workspace";
 
@@ -471,11 +488,20 @@ function StepWorkspace({
   const [pathValid, setPathValid] = useState<boolean | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const looksLikeFullPath = (value: string) =>
+    /^(~[\\/]|~$|[a-zA-Z]:[\\/]|\\\\|\/)/.test(value.trim());
+
   useEffect(() => {
     const trimmed = folderPath.trim();
     if (!trimmed) {
       setPathValid(null);
       setValidationError(null);
+      return;
+    }
+
+    if (!looksLikeFullPath(trimmed)) {
+      setPathValid(false);
+      setValidationError("Paste a full path, for example F:\\Projects\\BOB or ~/projects/app.");
       return;
     }
 

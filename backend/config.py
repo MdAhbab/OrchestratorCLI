@@ -63,7 +63,13 @@ class Settings(BaseSettings):
             return False
         return v
 
-    @field_validator('cors_origins', 'cors_allow_methods', 'cors_allow_headers', mode='before')
+    @field_validator(
+        'cors_origins',
+        'cors_allow_methods',
+        'cors_allow_headers',
+        'orchestrator_provider_priority',
+        mode='before',
+    )
     @classmethod
     def parse_comma_separated_list(cls, v: Any) -> List[str]:
         """Parse comma-separated lists from environment variables."""

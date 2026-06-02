@@ -234,6 +234,7 @@ type Prefs = {
   desktopNotifs: boolean;
   autoSync: boolean;
   fontSize: "sm" | "md" | "lg";
+  accentColor: string;
 };
 
 type AppState = {
@@ -259,6 +260,16 @@ type Ctx = AppState & {
 const StoreCtx = createContext<Ctx | null>(null);
 
 const KEY = "orch.state.v3";
+export const ACCENT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#a855f7"] as const;
+const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
+
+function isHexColor(value: unknown): value is string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function colorWithAlpha(color: string, alphaHex: string): string {
+  return `${color}${alphaHex}`;
+}
 
 const DEFAULT_STATE: AppState = {
   onboarded: false,
@@ -271,7 +282,13 @@ const DEFAULT_STATE: AppState = {
     autoFailover: true,
     globalDailyCap: 80,
   },
-  prefs: { sound: true, desktopNotifs: false, autoSync: true, fontSize: "md" },
+  prefs: {
+    sound: true,
+    desktopNotifs: false,
+    autoSync: true,
+    fontSize: "md",
+    accentColor: DEFAULT_ACCENT_COLOR,
+  },
 };
 
 type SettingsApiResponse = {
@@ -356,6 +373,7 @@ function applyRemotePreferences(base: AppState, preferences: Record<string, unkn
 
   const remoteRouting = preferences["ui.orchestrator.routingStrategy"];
   const remoteFontSize = preferences["ui.prefs.fontSize"];
+  const remoteAccentColor = preferences["ui.prefs.accentColor"];
   const workspacePath = preferences["ui.workspace.path"];
   const workspaceName = preferences["ui.workspace.name"];
 
@@ -412,6 +430,9 @@ function applyRemotePreferences(base: AppState, preferences: Record<string, unkn
         typeof remoteFontSize === "string" && FONT_SIZES.includes(remoteFontSize as Prefs["fontSize"])
           ? (remoteFontSize as Prefs["fontSize"])
           : base.prefs.fontSize,
+      accentColor: isHexColor(remoteAccentColor)
+        ? remoteAccentColor
+        : base.prefs.accentColor,
     },
   };
 }
@@ -449,6 +470,9 @@ function toBackendPreferences(state: AppState): Record<string, unknown> {
     "ui.prefs.desktopNotifs": state.prefs.desktopNotifs,
     "ui.prefs.autoSync": state.prefs.autoSync,
     "ui.prefs.fontSize": state.prefs.fontSize,
+    "ui.prefs.accentColor": isHexColor(state.prefs.accentColor)
+      ? state.prefs.accentColor
+      : DEFAULT_ACCENT_COLOR,
   };
 
   if (state.workspace) {
@@ -486,7 +510,13 @@ function loadInitial(): AppState {
           ? mergeProviders(parsed.providers)
           : DEFAULT_PROVIDERS,
       orchestrator: { ...DEFAULT_STATE.orchestrator, ...(parsed.orchestrator || {}) },
-      prefs: { ...DEFAULT_STATE.prefs, ...(parsed.prefs || {}) },
+      prefs: {
+        ...DEFAULT_STATE.prefs,
+        ...(parsed.prefs || {}),
+        accentColor: isHexColor(parsed.prefs?.accentColor)
+          ? parsed.prefs.accentColor
+          : DEFAULT_STATE.prefs.accentColor,
+      },
     };
   } catch {
     return DEFAULT_STATE;
@@ -524,6 +554,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const saveTimer = useRef<number | null>(null);
   const backendSyncTimer = useRef<number | null>(null);
   const orchestratorSyncTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    const accent = isHexColor(state.prefs.accentColor)
+      ? state.prefs.accentColor
+      : DEFAULT_ACCENT_COLOR;
+    const root = document.documentElement;
+    root.style.setProperty("--app-accent", accent);
+    root.style.setProperty("--app-accent-soft", colorWithAlpha(accent, "1a"));
+    root.style.setProperty("--app-accent-ring", colorWithAlpha(accent, "66"));
+    root.style.setProperty("--ring", accent);
+  }, [state.prefs.accentColor]);
+
   useEffect(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {

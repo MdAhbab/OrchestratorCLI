@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS users (
     last_login_at TIMESTAMP
 );
 
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_is_active ON users(is_active);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
 
 -- Workspaces table
 CREATE TABLE IF NOT EXISTS workspaces (
@@ -38,9 +38,9 @@ CREATE TABLE IF NOT EXISTS workspaces (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_workspaces_user_id ON workspaces(user_id);
-CREATE INDEX idx_workspaces_is_active ON workspaces(is_active);
-CREATE INDEX idx_workspaces_path ON workspaces(path);
+CREATE INDEX IF NOT EXISTS idx_workspaces_user_id ON workspaces(user_id);
+CREATE INDEX IF NOT EXISTS idx_workspaces_is_active ON workspaces(is_active);
+CREATE INDEX IF NOT EXISTS idx_workspaces_path ON workspaces(path);
 
 -- ============================================================================
 -- PROVIDERS AND CREDENTIALS
@@ -64,9 +64,9 @@ CREATE TABLE IF NOT EXISTS providers (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_providers_name ON providers(name);
-CREATE INDEX idx_providers_type ON providers(provider_type);
-CREATE INDEX idx_providers_is_enabled ON providers(is_enabled);
+CREATE INDEX IF NOT EXISTS idx_providers_name ON providers(name);
+CREATE INDEX IF NOT EXISTS idx_providers_type ON providers(provider_type);
+CREATE INDEX IF NOT EXISTS idx_providers_is_enabled ON providers(is_enabled);
 
 -- Provider credentials (encrypted storage)
 CREATE TABLE IF NOT EXISTS provider_credentials (
@@ -88,10 +88,10 @@ CREATE TABLE IF NOT EXISTS provider_credentials (
     UNIQUE(user_id, provider_id, credential_name)
 );
 
-CREATE INDEX idx_provider_credentials_user_id ON provider_credentials(user_id);
-CREATE INDEX idx_provider_credentials_provider_id ON provider_credentials(provider_id);
-CREATE INDEX idx_provider_credentials_is_active ON provider_credentials(is_active);
-CREATE INDEX idx_provider_credentials_user_active ON provider_credentials(user_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_provider_credentials_user_id ON provider_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider_id ON provider_credentials(provider_id);
+CREATE INDEX IF NOT EXISTS idx_provider_credentials_is_active ON provider_credentials(is_active);
+CREATE INDEX IF NOT EXISTS idx_provider_credentials_user_active ON provider_credentials(user_id, is_active);
 
 
 -- ============================================================================
@@ -115,10 +115,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_workspace_id ON sessions(workspace_id);
-CREATE INDEX idx_sessions_status ON sessions(status);
-CREATE INDEX idx_sessions_created_at ON sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_workspace_id ON sessions(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);
 
 -- Session agents (tracks which agents participated in a session)
 CREATE TABLE IF NOT EXISTS session_agents (
@@ -135,8 +135,8 @@ CREATE TABLE IF NOT EXISTS session_agents (
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_session_agents_session_id ON session_agents(session_id);
-CREATE INDEX idx_session_agents_agent_name ON session_agents(agent_name);
+CREATE INDEX IF NOT EXISTS idx_session_agents_session_id ON session_agents(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_agents_agent_name ON session_agents(agent_name);
 
 -- Messages table
 CREATE TABLE IF NOT EXISTS messages (
@@ -160,11 +160,11 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_messages_session_id ON messages(session_id);
-CREATE INDEX idx_messages_parent_message_id ON messages(parent_message_id);
-CREATE INDEX idx_messages_role ON messages(role);
-CREATE INDEX idx_messages_created_at ON messages(created_at);
-CREATE INDEX idx_messages_agent_name ON messages(agent_name);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_parent_message_id ON messages(parent_message_id);
+CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_agent_name ON messages(agent_name);
 
 -- Session artifacts (files, outputs, results generated during session)
 CREATE TABLE IF NOT EXISTS session_artifacts (
@@ -183,9 +183,9 @@ CREATE TABLE IF NOT EXISTS session_artifacts (
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_session_artifacts_session_id ON session_artifacts(session_id);
-CREATE INDEX idx_session_artifacts_message_id ON session_artifacts(message_id);
-CREATE INDEX idx_session_artifacts_type ON session_artifacts(artifact_type);
+CREATE INDEX IF NOT EXISTS idx_session_artifacts_session_id ON session_artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_artifacts_message_id ON session_artifacts(message_id);
+CREATE INDEX IF NOT EXISTS idx_session_artifacts_type ON session_artifacts(artifact_type);
 
 -- ============================================================================
 -- CLI RUNTIME AND LOGS
@@ -207,10 +207,10 @@ CREATE TABLE IF NOT EXISTS cli_runtimes (
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_cli_runtimes_session_id ON cli_runtimes(session_id);
-CREATE INDEX idx_cli_runtimes_provider_id ON cli_runtimes(provider_id);
-CREATE INDEX idx_cli_runtimes_process_id ON cli_runtimes(process_id);
-CREATE INDEX idx_cli_runtimes_status ON cli_runtimes(status);
+CREATE INDEX IF NOT EXISTS idx_cli_runtimes_session_id ON cli_runtimes(session_id);
+CREATE INDEX IF NOT EXISTS idx_cli_runtimes_provider_id ON cli_runtimes(provider_id);
+CREATE INDEX IF NOT EXISTS idx_cli_runtimes_process_id ON cli_runtimes(process_id);
+CREATE INDEX IF NOT EXISTS idx_cli_runtimes_status ON cli_runtimes(status);
 
 -- CLI logs (stdout/stderr from CLI processes)
 CREATE TABLE IF NOT EXISTS cli_logs (
@@ -223,9 +223,9 @@ CREATE TABLE IF NOT EXISTS cli_logs (
     FOREIGN KEY (runtime_id) REFERENCES cli_runtimes(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_cli_logs_runtime_id ON cli_logs(runtime_id);
-CREATE INDEX idx_cli_logs_log_type ON cli_logs(log_type);
-CREATE INDEX idx_cli_logs_timestamp ON cli_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_cli_logs_runtime_id ON cli_logs(runtime_id);
+CREATE INDEX IF NOT EXISTS idx_cli_logs_log_type ON cli_logs(log_type);
+CREATE INDEX IF NOT EXISTS idx_cli_logs_timestamp ON cli_logs(timestamp);
 
 -- ============================================================================
 -- CONTEXT FILES
@@ -251,10 +251,10 @@ CREATE TABLE IF NOT EXISTS context_files (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_context_files_session_id ON context_files(session_id);
-CREATE INDEX idx_context_files_user_id ON context_files(user_id);
-CREATE INDEX idx_context_files_content_hash ON context_files(content_hash);
-CREATE INDEX idx_context_files_is_indexed ON context_files(is_indexed);
+CREATE INDEX IF NOT EXISTS idx_context_files_session_id ON context_files(session_id);
+CREATE INDEX IF NOT EXISTS idx_context_files_user_id ON context_files(user_id);
+CREATE INDEX IF NOT EXISTS idx_context_files_content_hash ON context_files(content_hash);
+CREATE INDEX IF NOT EXISTS idx_context_files_is_indexed ON context_files(is_indexed);
 
 -- ============================================================================
 -- ORCHESTRATOR CONFIGURATION
@@ -282,8 +282,8 @@ CREATE TABLE IF NOT EXISTS orchestrator_config (
     UNIQUE(user_id, config_name)
 );
 
-CREATE INDEX idx_orchestrator_config_user_id ON orchestrator_config(user_id);
-CREATE INDEX idx_orchestrator_config_is_active ON orchestrator_config(is_active);
+CREATE INDEX IF NOT EXISTS idx_orchestrator_config_user_id ON orchestrator_config(user_id);
+CREATE INDEX IF NOT EXISTS idx_orchestrator_config_is_active ON orchestrator_config(is_active);
 
 -- Routing history (tracks orchestrator routing decisions)
 CREATE TABLE IF NOT EXISTS routing_history (
@@ -306,10 +306,10 @@ CREATE TABLE IF NOT EXISTS routing_history (
     FOREIGN KEY (selected_provider_id) REFERENCES providers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_routing_history_session_id ON routing_history(session_id);
-CREATE INDEX idx_routing_history_message_id ON routing_history(message_id);
-CREATE INDEX idx_routing_history_provider_id ON routing_history(selected_provider_id);
-CREATE INDEX idx_routing_history_created_at ON routing_history(created_at);
+CREATE INDEX IF NOT EXISTS idx_routing_history_session_id ON routing_history(session_id);
+CREATE INDEX IF NOT EXISTS idx_routing_history_message_id ON routing_history(message_id);
+CREATE INDEX IF NOT EXISTS idx_routing_history_provider_id ON routing_history(selected_provider_id);
+CREATE INDEX IF NOT EXISTS idx_routing_history_created_at ON routing_history(created_at);
 
 -- ============================================================================
 -- USER PREFERENCES
@@ -329,8 +329,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     UNIQUE(user_id, preference_key)
 );
 
-CREATE INDEX idx_user_preferences_user_id ON user_preferences(user_id);
-CREATE INDEX idx_user_preferences_category ON user_preferences(category);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_category ON user_preferences(category);
 
 -- ============================================================================
 -- USAGE ANALYTICS
@@ -354,12 +354,12 @@ CREATE TABLE IF NOT EXISTS usage_analytics (
     FOREIGN KEY (provider_id) REFERENCES providers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_usage_analytics_user_id ON usage_analytics(user_id);
-CREATE INDEX idx_usage_analytics_session_id ON usage_analytics(session_id);
-CREATE INDEX idx_usage_analytics_provider_id ON usage_analytics(provider_id);
-CREATE INDEX idx_usage_analytics_event_type ON usage_analytics(event_type);
-CREATE INDEX idx_usage_analytics_created_at ON usage_analytics(created_at);
-CREATE INDEX idx_usage_analytics_user_created ON usage_analytics(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_user_id ON usage_analytics(user_id);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_session_id ON usage_analytics(session_id);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_provider_id ON usage_analytics(provider_id);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_event_type ON usage_analytics(event_type);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_created_at ON usage_analytics(created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_analytics_user_created ON usage_analytics(user_id, created_at DESC);
 
 -- ============================================================================
 -- TRIGGERS FOR UPDATED_AT
