@@ -42,13 +42,7 @@ def get_encryption_key() -> bytes:
     # If not set in env, check/persist to key file
     if not raw:
         from pathlib import Path
-        key_file = Path("data/bob.key")
-        if not key_file.parent.exists():
-            # If running from backend/ subdirectory, try parent data/bob.key
-            key_file = Path("../data/bob.key")
-        if not key_file.parent.exists():
-            # Fallback to current folder if data/ doesn't exist
-            key_file = Path("bob.key")
+        key_file = settings.database_path.parent / "bob.key"
             
         if key_file.exists():
             try:

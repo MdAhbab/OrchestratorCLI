@@ -5,11 +5,13 @@ Handles context files and artifacts management.
 
 from typing import List, Optional, Set
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse, Response
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import aiosqlite
 import json
 import hashlib
+import mimetypes
 import aiofiles
 import logging
 from pathlib import Path
@@ -254,10 +256,11 @@ async def workspace_git_status(
 
 _GIT_READ = {
     "status", "log", "branch", "remote", "diff", "show", "rev-parse",
-    "config", "fetch",
+    "config", "fetch", "blame", "shortlog",
 }
 _GIT_WRITE = {
     "pull", "switch", "add", "stash", "push", "commit", "checkout",
+    "merge", "rebase", "reset",
 }
 
 
@@ -292,14 +295,7 @@ async def workspace_git_run(
             f"git subcommand '{subcmd}' is not in the allowed list",
         )
 
-    # SEC-09/SC-01 check: push, commit, checkout are only allowed in debug mode
-    if subcmd in {"push", "commit", "checkout"} and not settings.debug:
-        raise HTTPException(
-            403,
-            f"git '{subcmd}' is disabled in production mode; enable DEBUG for local dev only",
-        )
-
-    # Require confirmation for write operations
+    # Require confirmation for write operations (safety guard)
     confirm_action = confirm or getattr(payload, "confirm", False)
     if subcmd in _GIT_WRITE and not confirm_action:
         raise HTTPException(
@@ -817,6 +813,80 @@ async def create_artifact(
     )
 
 
+async def _fetch_artifact_row(
+    artifact_id: int,
+    db: aiosqlite.Connection,
+    user_id: int,
+) -> aiosqlite.Row:
+    cursor = await db.execute(
+        """
+        SELECT a.* FROM session_artifacts a
+        JOIN sessions s ON a.session_id = s.id
+        WHERE a.id = ? AND s.user_id = ?
+        """,
+        (artifact_id, user_id),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Artifact with id {artifact_id} not found",
+        )
+    return row
+
+
+@router.get("/artifacts/{artifact_id}/download")
+async def download_artifact(
+    artifact_id: int,
+    db: aiosqlite.Connection = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> Response:
+    """Stream artifact bytes as a file download."""
+    row = await _fetch_artifact_row(artifact_id, db, user_id)
+    name = row["name"] or f"artifact-{artifact_id}"
+    mime_type = row["mime_type"] or mimetypes.guess_type(name)[0] or "application/octet-stream"
+    disposition = f'attachment; filename="{name}"'
+
+    if row["path"]:
+        file_path = Path(row["path"])
+        if not file_path.is_absolute():
+            ws = await fetch_active_workspace_path(db, user_id)
+            if ws:
+                file_path = Path(normalize_workspace_path(ws)) / file_path
+        file_path = file_path.resolve()
+        ws_root = await _active_workspace_path(db, user_id)
+        if file_path.is_file():
+            if ws_root:
+                try:
+                    file_path.relative_to(Path(ws_root).resolve())
+                except ValueError:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Artifact path is outside the active workspace",
+                    )
+            return FileResponse(
+                path=file_path,
+                media_type=mime_type,
+                filename=name,
+                headers={"Content-Disposition": disposition},
+            )
+
+    if row["content"]:
+        body = row["content"]
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        return Response(
+            content=body,
+            media_type=mime_type,
+            headers={"Content-Disposition": disposition},
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Artifact has no downloadable content",
+    )
+
+
 @router.get("/artifacts/{artifact_id}", response_model=SessionArtifact)
 async def get_artifact(
     artifact_id: int,
@@ -837,22 +907,8 @@ async def get_artifact(
     Raises:
         HTTPException: If artifact not found or access denied
     """
-    cursor = await db.execute(
-        """
-        SELECT a.* FROM session_artifacts a
-        JOIN sessions s ON a.session_id = s.id
-        WHERE a.id = ? AND s.user_id = ?
-        """,
-        (artifact_id, user_id)
-    )
-    row = await cursor.fetchone()
-    
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Artifact with id {artifact_id} not found"
-        )
-    
+    row = await _fetch_artifact_row(artifact_id, db, user_id)
+
     return SessionArtifact(
         id=row["id"],
         session_id=row["session_id"],

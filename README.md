@@ -59,6 +59,27 @@ python run.py --port 8080 --frontend-port 3000
 python run.py --init-db
 ```
 
+### Desktop app
+
+An Electron desktop shell is available in [`desktop/`](desktop/README.md). It runs the existing React UI and FastAPI backend locally without browser chrome.
+
+```bash
+# One-time: backend venv + desktop deps
+python -m venv backend/venv && backend/venv/Scripts/pip install -r backend/requirements.txt
+cd desktop && npm install
+
+# Dev desktop (Vite + Electron)
+npm run desktop:dev
+
+# Windows installer (.exe)
+npm run desktop:dist:win
+
+# macOS .app / DMG (run on macOS)
+npm run desktop:dist:mac
+```
+
+Browser development (`python run.py`, `npm run dev` in `frontend/`) is unchanged.
+
 ### Access Points
 
 Once running, access:
@@ -199,6 +220,8 @@ LOG_JSON_FORMAT=false
 
 # Directories
 UPLOAD_DIR=./uploads
+TEMP_DIR=./runtime/tmp
+CACHE_DIR=./runtime/cache
 WORKSPACE_DIR=./shared
 
 # Orchestrator LLM providers (at least one recommended)
@@ -316,10 +339,13 @@ IBMbob/
 │   ├── package.json    # Node dependencies
 │   └── vite.config.ts  # Vite configuration
 │
-├── data/               # Database and data files
-├── uploads/            # Uploaded files
+├── data/               # Local SQLite database files (generated, ignored)
+├── uploads/            # Uploaded/generated files (generated, ignored)
 │   ├── context/       # Context files
 │   └── artifacts/     # Generated artifacts
+├── runtime/            # Runtime cache/tmp data (generated, ignored)
+│   ├── cache/
+│   └── tmp/
 │
 ├── shared/            # Shared resources
 │   ├── sessions/      # Session data

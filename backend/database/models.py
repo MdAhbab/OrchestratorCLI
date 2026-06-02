@@ -40,6 +40,7 @@ class SessionType(str, Enum):
     CHAT = "chat"
     TASK = "task"
     WORKFLOW = "workflow"
+    DISPATCH = "dispatch"
 
 
 class MessageRole(str, Enum):

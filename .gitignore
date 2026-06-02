@@ -29,6 +29,7 @@ ENV/
 
 # FastAPI
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 *.log
@@ -61,6 +62,24 @@ IBMBOB sessions/
 shared/sessions/*.yaml
 !shared/sessions/.gitkeep
 
+# Runtime/generated app data
+uploads/*
+!uploads/.gitkeep
+!uploads/context/
+uploads/context/*
+!uploads/context/.gitkeep
+!uploads/artifacts/
+uploads/artifacts/*
+!uploads/artifacts/.gitkeep
+runtime/*
+!runtime/.gitkeep
+!runtime/cache/
+runtime/cache/*
+!runtime/cache/.gitkeep
+!runtime/tmp/
+runtime/tmp/*
+!runtime/tmp/.gitkeep
+
 # Logs
 logs/
 *.log
@@ -72,14 +91,21 @@ coverage/
 # Build
 build/
 *.tsbuildinfo
+!desktop/build/
+!desktop/build/generate-icon.ps1
+!desktop/build/icon.ico
+!desktop/build/icon.png
 
 # Temporary files
 tmp/
 temp/
 *.tmp
+!runtime/tmp/
+!runtime/tmp/.gitkeep
 
 # Local SQLite database (created at runtime)
 data/*.db
 data/*.db-shm
 data/*.db-wal
-
+data/*.key
+!data/.gitkeep

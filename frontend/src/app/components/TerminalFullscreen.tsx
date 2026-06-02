@@ -3,16 +3,19 @@ import { useParams, useSearchParams } from "react-router";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { wsPath } from "../lib/api";
+import { apiFetch, wsPath } from "../lib/api";
 
 export function TerminalFullscreen() {
   const { id } = useParams<{ id: string }>();
   const [search] = useSearchParams();
   const name = search.get("name") ?? "terminal";
+  const wsToken = search.get("token");
   const runtimeId = Number(id);
   const [status, setStatus] = useState<"connecting" | "open" | "error" | "closed">(
     "connecting",
   );
+  const [resolvedToken, setResolvedToken] = useState<string | null>(wsToken);
+  const [tokenReady, setTokenReady] = useState(false);
 
   const termContainer = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -66,12 +69,50 @@ export function TerminalFullscreen() {
   }, [runtimeId]);
 
   useEffect(() => {
+    let cancelled = false;
+    const resolveToken = async () => {
+      setTokenReady(false);
+      if (Number.isNaN(runtimeId)) {
+        setStatus("error");
+        setTokenReady(true);
+        return;
+      }
+      setResolvedToken(wsToken);
+      try {
+        const res = await apiFetch(`/runtimes/${runtimeId}/ws-token`, {
+          method: "POST",
+          timeoutMs: 10_000,
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { ws_url?: string };
+          const token = data.ws_url
+            ? new URL(data.ws_url, window.location.origin).searchParams.get("token")
+            : null;
+          if (!cancelled && token) setResolvedToken(token);
+        }
+      } catch (e) {
+        console.warn("Failed to refresh token for fullscreen:", e);
+      } finally {
+        if (!cancelled) setTokenReady(true);
+      }
+    };
+    void resolveToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [runtimeId, wsToken]);
+
+  useEffect(() => {
+    if (!tokenReady) return;
     if (Number.isNaN(runtimeId)) {
       setStatus("error");
       return;
     }
 
-    const url = wsPath(`/ws/terminals/${runtimeId}`);
+    const wsRelPath = resolvedToken
+      ? `/ws/terminals/${runtimeId}?token=${encodeURIComponent(resolvedToken)}`
+      : `/ws/terminals/${runtimeId}`;
+    const url = wsPath(wsRelPath);
     setStatus("connecting");
     const ws = new WebSocket(url);
     wsRef.current = ws;
@@ -109,7 +150,7 @@ export function TerminalFullscreen() {
       } catch {}
       wsRef.current = null;
     };
-  }, [runtimeId]);
+  }, [runtimeId, resolvedToken, tokenReady]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#0a0a0d] text-zinc-100">

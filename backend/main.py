@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     settings.context_files_dir.mkdir(parents=True, exist_ok=True)
     settings.artifacts_dir.mkdir(parents=True, exist_ok=True)
+    settings.cache_dir.mkdir(parents=True, exist_ok=True)
+    settings.temp_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Storage directories initialized")
     
     # Bind PTY manager to the running event loop so reader threads can

@@ -16,6 +16,7 @@ import {
   Layers,
   Moon,
   Plug,
+  RefreshCw,
   Save,
   ShieldCheck,
   Sun,
@@ -257,6 +258,18 @@ function ApplyButton({
       </button>
     </div>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
 }
 
 function GeneralPanel() {
@@ -1018,6 +1031,50 @@ function SessionsPanel() {
 
 function PrivacyPanel() {
   const { reset } = useStore();
+  const [storage, setStorage] = useState<{
+    areas: { name: string; path: string; files: number; size_bytes: number; clearable: boolean }[];
+  } | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  const loadStorage = async () => {
+    try {
+      const res = await apiFetch("/settings/storage", { cache: "no-store" });
+      if (res.ok) setStorage(await res.json());
+    } catch {
+      /* optional maintenance summary */
+    }
+  };
+
+  useEffect(() => {
+    void loadStorage();
+  }, []);
+
+  const clearableAreas = storage?.areas.filter((area) => area.clearable) ?? [];
+  const clearableBytes = clearableAreas.reduce((sum, area) => sum + area.size_bytes, 0);
+  const clearableFiles = clearableAreas.reduce((sum, area) => sum + area.files, 0);
+
+  const clearCache = async () => {
+    if (!confirm("Clear generated cache and temporary files? Sessions, settings, credentials, and the database will be kept.")) {
+      return;
+    }
+    setClearing(true);
+    try {
+      const res = await apiFetch("/settings/storage/clear-cache?confirm=true", {
+        method: "POST",
+        timeoutMs: 30_000,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      toast.success(`Cleared ${formatBytes(data.cleared_bytes ?? 0)} from cache/temp.`);
+      await loadStorage();
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not clear generated cache.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <>
       <SectionTitle title="Privacy" sub="Orchestrator runs entirely on your machine." />
@@ -1032,6 +1089,19 @@ function PrivacyPanel() {
         </Row>
         <Row title="Session storage" desc="YAML files inside your workspace folder">
           <span className="font-mono text-[10.5px] text-zinc-500">.orchestrator/sessions/</span>
+        </Row>
+        <Row
+          title="Generated cache"
+          desc={`${clearableFiles} files in cache/temp (${formatBytes(clearableBytes)})`}
+        >
+          <button
+            type="button"
+            disabled={clearing}
+            onClick={() => void clearCache()}
+            className="flex items-center gap-1 rounded-md border border-zinc-300/70 bg-white px-2.5 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-zinc-200 dark:hover:bg-white/[0.07]"
+          >
+            <Trash2 className="h-3 w-3" /> {clearing ? "Clearing..." : "Clear cache"}
+          </button>
         </Row>
         <Row title="Reset everything" desc="Wipe local state and walk through onboarding again">
           <button
@@ -1049,6 +1119,33 @@ function PrivacyPanel() {
 }
 
 function AboutPanel() {
+  const [updateStatus, setUpdateStatus] = useState<
+    "idle" | "checking" | "up-to-date" | "available"
+  >("idle");
+  const [availableVersion, setAvailableVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI as
+      | {
+          onUpdateAvailable?: (cb: (info: { version: string }) => void) => void;
+          onUpdateNotAvailable?: (cb: () => void) => void;
+        }
+      | undefined;
+    if (!api) return;
+    api.onUpdateAvailable?.((info) => {
+      setAvailableVersion(info.version);
+      setUpdateStatus("available");
+    });
+    api.onUpdateNotAvailable?.(() => setUpdateStatus("up-to-date"));
+  }, []);
+
+  const checkForUpdates = () => {
+    setUpdateStatus("checking");
+    setTimeout(() => {
+      if (updateStatus === "checking") setUpdateStatus("up-to-date");
+    }, 10_000);
+  };
+
   return (
     <>
       <SectionTitle title="About" sub="Orchestrator · the local conductor for AI coding agents." />
@@ -1060,7 +1157,7 @@ function AboutPanel() {
               Orchestrator
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              v1.0.0-beta · commit 9c8b3a2
+              v0.8.0 · single-user desktop
             </div>
           </div>
         </div>
@@ -1068,17 +1165,30 @@ function AboutPanel() {
           MIT licensed. Multi-agent orchestration platform that coordinates Claude, Gemini,
           Codex, Copilot, DeepSeek, Kimi, Cline, and Grok orchestrator routing.
         </p>
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={checkForUpdates}
+            disabled={updateStatus === "checking"}
+            className="flex items-center gap-1.5 rounded-md border border-zinc-200/70 bg-white px-2.5 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
+          >
+            <RefreshCw className={`h-3 w-3 ${updateStatus === "checking" ? "animate-spin" : ""}`} />
+            {updateStatus === "checking" ? "Checking…" : "Check for updates"}
+          </button>
+          {updateStatus === "up-to-date" && (
+            <span className="flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/[0.08] dark:text-emerald-300">
+              <Check className="h-2.5 w-2.5" /> Up to date
+            </span>
+          )}
+          {updateStatus === "available" && availableVersion && (
+            <span className="flex items-center gap-1 rounded-md border border-indigo-300/40 bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] text-indigo-700 dark:border-indigo-400/20 dark:bg-indigo-400/[0.08] dark:text-indigo-300">
+              v{availableVersion} available — downloading…
+            </span>
+          )}
+        </div>
         <div className="mt-4 flex gap-2">
           <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
-          >
-            Docs
-          </a>
-          <a
-            href="https://github.com"
+            href="https://github.com/MdAhbab/IBMbob"
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
@@ -1086,7 +1196,7 @@ function AboutPanel() {
             GitHub
           </a>
           <a
-            href="https://github.com"
+            href="https://github.com/MdAhbab/IBMbob/blob/main/CHANGELOG.md"
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"

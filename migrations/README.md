@@ -6,6 +6,7 @@
 |------|---------|
 | `001_cli_pty.sql` | Placeholder; PTY tables are created by `backend/database/init_db.py` and `apply_migrations()` at startup. |
 | `002_orchestrator_providers.sql` | Legacy migration that disables the old `bob` provider. Fresh installs never seed `bob`; this only applies when upgrading older databases. |
+| `003_sessions_dispatch.sql` | Rebuilds `sessions` so dispatch sessions created by orchestrator reroutes are valid on upgraded databases. |
 
 ## Fresh install vs upgrade
 

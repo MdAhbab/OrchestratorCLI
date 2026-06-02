@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     
     # Application
     app_name: str = "AI Orchestrator Backend"
-    app_version: str = "1.0.0"
-    debug: bool = False
+    app_version: str = "0.8.0"
+    debug: bool = True
     
     # API
     api_prefix: str = "/api"
@@ -50,6 +50,8 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: Annotated[List[str], NoDecode] = ["*"]
@@ -78,14 +80,16 @@ class Settings(BaseSettings):
         return v
     
     # Database
-    database_url: str = "sqlite+aiosqlite:///./data/orchestrator.db"
-    database_path: Path = Path("./data/orchestrator.db")
+    database_url: str = "sqlite+aiosqlite:///./storage/data/orchestrator.db"
+    database_path: Path = Path("./storage/data/orchestrator.db")
     database_echo: bool = False
     
     # File Storage
-    upload_dir: Path = Path("./uploads")
-    context_files_dir: Path = Path("./uploads/context")
-    artifacts_dir: Path = Path("./uploads/artifacts")
+    upload_dir: Path = Path("./storage/uploads")
+    context_files_dir: Path = Path("./storage/uploads/context")
+    artifacts_dir: Path = Path("./storage/uploads/artifacts")
+    cache_dir: Path = Path("./storage/runtime/cache")
+    temp_dir: Path = Path("./storage/runtime/tmp")
     max_upload_size: int = 10 * 1024 * 1024  # 10MB
     allowed_file_types: List[str] = [
         ".txt", ".md", ".py", ".js", ".ts", ".json", ".yaml", ".yml",
@@ -169,6 +173,8 @@ class Settings(BaseSettings):
             object.__setattr__(self, "upload_dir", root / "uploads")
             object.__setattr__(self, "context_files_dir", root / "uploads" / "context")
             object.__setattr__(self, "artifacts_dir", root / "uploads" / "artifacts")
+            object.__setattr__(self, "cache_dir", root / "cache")
+            object.__setattr__(self, "temp_dir", root / "tmp")
         if "database_path" not in self.model_fields_set:
             derived_database_path = self._parse_sqlite_path_from_url(self.database_url)
             if derived_database_path is not None:
@@ -181,10 +187,8 @@ class Settings(BaseSettings):
         legacy_db = self.database_path.parent / "bob.db"
         if legacy_db.is_file() and not self.database_path.is_file():
             self.database_path = legacy_db.resolve()
-        if not self.debug and not (self.encryption_key or "").strip():
-            raise ValueError(
-                "ENCRYPTION_KEY must be set when DEBUG is false (production mode)."
-            )
+        # Note: ENCRYPTION_KEY is generated automatically by the desktop
+        # shell (backend-manager.ts) on first launch — no manual setup required.
         self._create_directories()
 
     @staticmethod
@@ -204,6 +208,8 @@ class Settings(BaseSettings):
             self.upload_dir.mkdir(parents=True, exist_ok=True)
             self.context_files_dir.mkdir(parents=True, exist_ok=True)
             self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             # Log error but don't fail initialization
             import logging

@@ -452,6 +452,9 @@ class ProcessManager:
             self.project_root / "uploads",
             self.project_root / "uploads" / "context",
             self.project_root / "uploads" / "artifacts",
+            self.project_root / "runtime",
+            self.project_root / "runtime" / "cache",
+            self.project_root / "runtime" / "tmp",
             self.project_root / "shared" / "sessions",
         ]
         

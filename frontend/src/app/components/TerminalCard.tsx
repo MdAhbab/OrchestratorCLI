@@ -29,6 +29,8 @@ export type CliRuntime = {
   /** Live PTY runtime id (created by POST /api/runtimes/spawn). */
   runtimeId?: number;
   wsUrl?: string;
+  /** Human-readable shell label from the backend (e.g. 'PowerShell', 'bash'). */
+  shellLabel?: string;
   name: string;
   glyph: string;
   model: string;
@@ -118,6 +120,7 @@ export function TerminalCard({
   const [paused, setPaused] = useState(false);
   const [connectRequested, setConnectRequested] = useState(!lazyConnect);
   const [runtimeId, setRuntimeId] = useState<number | undefined>(cli.runtimeId);
+  const [shellLabel, setShellLabel] = useState<string>(cli.shellLabel ?? "Terminal");
   const [wsUrl, setWsUrl] = useState<string | undefined>(cli.wsUrl);
   const spawnInProgressRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
@@ -128,6 +131,7 @@ export function TerminalCard({
     setWsUrl(cli.wsUrl);
   }, [cli.runtimeId, cli.wsUrl]);
 
+
   const termContainer = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -135,7 +139,16 @@ export function TerminalCard({
   const onDataDisposeRef = useRef<(() => void) | null>(null);
   const sendBufRef = useRef<string>("");
   const assignedTaskSentRef = useRef<string | null>(null);
+  const lastRuntimeIdRef = useRef<number | undefined>(undefined);
   const cardInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const nextRuntimeId = runtimeId ?? cli.runtimeId;
+    if (nextRuntimeId !== lastRuntimeIdRef.current) {
+      assignedTaskSentRef.current = null;
+      lastRuntimeIdRef.current = nextRuntimeId;
+    }
+  }, [runtimeId, cli.runtimeId]);
 
   const s = stateMap[cli.state];
   const pct = Math.min(100, (cli.used / cli.cap) * 100);
@@ -238,6 +251,7 @@ export function TerminalCard({
           const data = await res.json();
           rid = data.runtime_id as number;
           currentWsUrl = data.ws_url as string;
+          if (data.shell_label) setShellLabel(data.shell_label as string);
           if (cancelled) return;
           setRuntimeId(rid);
           setWsUrl(currentWsUrl);
@@ -260,6 +274,23 @@ export function TerminalCard({
       }
 
       if (cancelled || rid == null) return;
+
+      // Single-use WS tokens are consumed on connect; refresh before each attach.
+      try {
+        const refreshRes = await apiFetch(`/runtimes/${rid}/ws-token`, {
+          method: "POST",
+          timeoutMs: 10_000,
+        });
+        if (refreshRes.ok) {
+          const refreshed = (await refreshRes.json()) as { ws_url?: string };
+          if (refreshed.ws_url) {
+            currentWsUrl = refreshed.ws_url;
+            if (!cancelled) setWsUrl(currentWsUrl);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to refresh WebSocket token:", e);
+      }
 
       const path = currentWsUrl || `/ws/terminals/${rid}`;
       const url = wsPath(path);
@@ -422,12 +453,25 @@ export function TerminalCard({
     }
   };
 
-  const handleFullscreen = () => {
+  const handleFullscreen = async () => {
     if (runtimeId == null) return;
+    const qs = new URLSearchParams({ name: cli.name });
+    try {
+      const res = await apiFetch(`/runtimes/${runtimeId}/ws-token`, { method: "POST" });
+      if (res.ok) {
+        const data = (await res.json()) as { ws_url?: string };
+        if (data.ws_url) {
+          const token = new URL(data.ws_url, window.location.origin).searchParams.get("token");
+          if (token) qs.set("token", token);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to refresh token for fullscreen:", e);
+    }
     window.open(
-      `/terminal/${runtimeId}?name=${encodeURIComponent(cli.name)}`,
+      `/terminal/${runtimeId}?${qs.toString()}`,
       "_blank",
-      "noopener,noreferrer,width=1100,height=720"
+      "noopener,noreferrer,width=1100,height=720",
     );
   };
 
@@ -627,7 +671,7 @@ export function TerminalCard({
       <div className="m-3 mt-3 flex flex-1 flex-col overflow-hidden rounded-lg border border-zinc-200/70 bg-[#0a0a0d] dark:border-white/[0.05]">
         <div className="flex items-center justify-between border-b border-white/[0.04] px-3 py-1">
           <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-zinc-500">
-            {cli.id}.session · powershell
+          {cli.id}.session · {shellLabel}
           </span>
         </div>
         <div className="relative flex-1">

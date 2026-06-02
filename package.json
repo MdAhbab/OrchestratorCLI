@@ -1,0 +1,13 @@
+{
+  "name": "ibm-bob",
+  "private": true,
+  "description": "AI Orchestrator - multi-agent platform",
+  "scripts": {
+    "desktop:dev": "npm run dev --prefix desktop",
+    "desktop:build": "npm run build --prefix desktop",
+    "desktop:dist": "npm run dist --prefix desktop",
+    "desktop:dist:win": "npm run dist:win --prefix desktop",
+    "desktop:dist:mac": "npm run dist:mac --prefix desktop",
+    "desktop:dist:dir": "npm run dist:dir --prefix desktop"
+  }
+}

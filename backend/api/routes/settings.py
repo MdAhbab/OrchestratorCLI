@@ -4,11 +4,12 @@ Handles user preferences and settings.
 """
 
 from typing import Dict, Any, List, Optional, Tuple
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import aiosqlite
 import json
+import shutil
 from pathlib import Path
 
 
@@ -23,6 +24,7 @@ from backend.database.models import (
 from backend.api.dependencies import (
     get_db, get_current_user_id
 )
+from backend.config import settings as app_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -51,6 +53,29 @@ class CliRegistryResponse(BaseModel):
     version: str
     last_updated: Optional[str] = None
     clis: List[Dict[str, Any]]
+
+
+class StorageAreaResponse(BaseModel):
+    """Filesystem storage area used by the local app."""
+    name: str
+    path: str
+    exists: bool
+    files: int
+    size_bytes: int
+    clearable: bool = False
+
+
+class StorageResponse(BaseModel):
+    """Local storage summary for privacy / maintenance UI."""
+    areas: List[StorageAreaResponse]
+    total_size_bytes: int
+
+
+class ClearCacheResponse(BaseModel):
+    """Result of clearing clearable generated cache/temp data."""
+    cleared_files: int
+    cleared_bytes: int
+    areas: List[StorageAreaResponse]
 
 
 # Default settings structure
@@ -87,6 +112,91 @@ DEFAULT_SETTINGS = {
         "crash_reports": True
     }
 }
+
+
+def _managed_storage_dirs() -> Dict[str, Tuple[Path, bool]]:
+    """Return app-owned storage paths and whether each can be cleared as cache."""
+    return {
+        "database": (app_settings.database_path, False),
+        "uploads": (app_settings.upload_dir, False),
+        "context_uploads": (app_settings.context_files_dir, False),
+        "artifacts": (app_settings.artifacts_dir, False),
+        "cache": (app_settings.cache_dir, True),
+        "temp": (app_settings.temp_dir, True),
+    }
+
+
+def _dir_stats(path: Path) -> Tuple[int, int]:
+    """Return file count and byte size for a file or directory without following symlinks."""
+    try:
+        if not path.exists():
+            return 0, 0
+        if path.is_file() or path.is_symlink():
+            return 1, path.lstat().st_size
+        files = 0
+        size = 0
+        for child in path.rglob("*"):
+            try:
+                if child.is_dir() and not child.is_symlink():
+                    continue
+                files += 1
+                size += child.lstat().st_size
+            except OSError:
+                continue
+        return files, size
+    except OSError:
+        return 0, 0
+
+
+def _storage_area(name: str, path: Path, clearable: bool) -> StorageAreaResponse:
+    resolved = path.resolve()
+    files, size_bytes = _dir_stats(resolved)
+    return StorageAreaResponse(
+        name=name,
+        path=str(resolved),
+        exists=resolved.exists(),
+        files=files,
+        size_bytes=size_bytes,
+        clearable=clearable,
+    )
+
+
+def _storage_response() -> StorageResponse:
+    areas = [
+        _storage_area(name, path, clearable)
+        for name, (path, clearable) in _managed_storage_dirs().items()
+    ]
+    return StorageResponse(
+        areas=areas,
+        total_size_bytes=sum(area.size_bytes for area in areas),
+    )
+
+
+def _clear_directory_contents(root: Path) -> Tuple[int, int]:
+    """Delete children inside root after resolving containment; never deletes root."""
+    root = root.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    cleared_files = 0
+    cleared_bytes = 0
+
+    for child in list(root.iterdir()):
+        if child.name == ".gitkeep":
+            continue
+        try:
+            target = child.resolve()
+            if root != target and root not in target.parents:
+                continue
+            files, size_bytes = _dir_stats(child)
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
+            cleared_files += files
+            cleared_bytes += size_bytes
+        except OSError:
+            continue
+
+    return cleared_files, cleared_bytes
 
 
 @router.get("/cli-registry", response_model=CliRegistryResponse)
@@ -226,6 +336,42 @@ async def get_settings(
     return SettingsResponse(
         preferences=preferences,
         categories=categories
+    )
+
+
+@router.get("/storage", response_model=StorageResponse)
+async def get_storage_summary(
+    user_id: int = Depends(get_current_user_id),
+) -> StorageResponse:
+    """Return local generated storage locations and sizes."""
+    return _storage_response()
+
+
+@router.post("/storage/clear-cache", response_model=ClearCacheResponse)
+async def clear_generated_cache(
+    confirm: bool = Query(False, description="Must be true to clear cache/temp files."),
+    user_id: int = Depends(get_current_user_id),
+) -> ClearCacheResponse:
+    """Clear app-owned cache/temp directories without deleting sessions, settings, or DB."""
+    if not confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Confirmation is required to clear generated cache (set ?confirm=true)",
+        )
+
+    cleared_files = 0
+    cleared_bytes = 0
+    for _, (path, clearable) in _managed_storage_dirs().items():
+        if not clearable:
+            continue
+        files, size_bytes = _clear_directory_contents(path)
+        cleared_files += files
+        cleared_bytes += size_bytes
+
+    return ClearCacheResponse(
+        cleared_files=cleared_files,
+        cleared_bytes=cleared_bytes,
+        areas=_storage_response().areas,
     )
 
 

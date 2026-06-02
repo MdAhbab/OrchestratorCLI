@@ -13,26 +13,133 @@ import asyncio
 import logging
 import os
 import secrets
+import shlex
 import sys
 import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Callable, Deque, Dict, List, Optional, Tuple
+from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# pywinpty is Windows-only.
-try:
-    from winpty import PTY as WinPTY  # type: ignore
-    _PTY_AVAILABLE = sys.platform == "win32"
-except Exception as e:  # pragma: no cover
-    WinPTY = None  # type: ignore
-    _PTY_AVAILABLE = False
-    logger.warning(f"pywinpty unavailable: {e}")
+_NativePTY: Any = None
+_PTY_AVAILABLE = False
+
+if sys.platform == "win32":
+    try:
+        from winpty import PTY as _NativePTY  # type: ignore
+
+        _PTY_AVAILABLE = True
+    except Exception as e:  # pragma: no cover
+        logger.warning("pywinpty unavailable: %s", e)
+else:
+    _PTY_AVAILABLE = True  # PosixPTY defined below; import may still fail at runtime
 
 
 PTY_AVAILABLE = _PTY_AVAILABLE
+
+
+class PosixPTY:
+    """POSIX PTY backend (Linux/macOS) with a pywinpty-compatible surface."""
+
+    def __init__(self, cols: int, rows: int) -> None:
+        import pty as pty_mod
+
+        self._master, self._slave = pty_mod.openpty()
+        self._set_winsize(cols, rows)
+        self._pid: Optional[int] = None
+        self._exitstatus: Optional[int] = None
+
+    @staticmethod
+    def _set_winsize_fd(fd: int, cols: int, rows: int) -> None:
+        import fcntl
+        import struct
+        import termios
+
+        winsize = struct.pack("HHHH", rows, cols, 0, 0)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
+    def _set_winsize(self, cols: int, rows: int) -> None:
+        self._set_winsize_fd(self._master, cols, rows)
+
+    def spawn(
+        self,
+        appname: str,
+        cmdline: Optional[str] = None,
+        cwd: Optional[str] = None,
+    ) -> bool:
+        argv = [appname]
+        if cmdline:
+            argv.extend(shlex.split(cmdline))
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.close(self._master)
+                os.setsid()
+                import termios
+
+                os.ioctl(self._slave, termios.TIOCSCTTY, 0)
+                os.dup2(self._slave, 0)
+                os.dup2(self._slave, 1)
+                os.dup2(self._slave, 2)
+                if self._slave > 2:
+                    os.close(self._slave)
+                if cwd:
+                    os.chdir(cwd)
+                os.execvp(argv[0], argv)
+            except Exception:
+                os._exit(127)
+        self._pid = pid
+        os.close(self._slave)
+        return True
+
+    @property
+    def pid(self) -> Optional[int]:
+        return self._pid
+
+    def read(self, blocking: bool = False) -> str:
+        import select
+
+        if blocking:
+            ready = True
+        else:
+            ready, _, _ = select.select([self._master], [], [], 0)
+        if not ready:
+            return ""
+        try:
+            data = os.read(self._master, 4096)
+        except OSError:
+            return ""
+        if not data:
+            return ""
+        return data.decode("utf-8", errors="replace")
+
+    def write(self, data: str) -> None:
+        payload = data.encode("utf-8", errors="replace") if isinstance(data, str) else data
+        os.write(self._master, payload)
+
+    def isalive(self) -> bool:
+        if self._pid is None:
+            return False
+        pid, status = os.waitpid(self._pid, os.WNOHANG)
+        if pid == 0:
+            return True
+        if os.WIFEXITED(status):
+            self._exitstatus = os.WEXITSTATUS(status)
+        elif os.WIFSIGNALED(status):
+            self._exitstatus = -os.WTERMSIG(status)
+        return False
+
+    def get_exitstatus(self) -> Optional[int]:
+        return self._exitstatus
+
+    def set_size(self, cols: int, rows: int) -> None:
+        self._set_winsize(max(20, int(cols)), max(5, int(rows)))
+
+
+if sys.platform != "win32":
+    _NativePTY = PosixPTY
 
 
 def _default_shell() -> List[str]:
@@ -51,8 +158,26 @@ def _default_shell() -> List[str]:
         if powershell:
             return [powershell, "-NoLogo"]
         return [ps]
-    # Non-Windows (development convenience): use bash.
-    return ["/bin/bash", "-i"]
+    # Non-Windows (development convenience): use bash or zsh.
+    for sh in ("/bin/zsh", "/bin/bash", "/bin/sh"):
+        if Path(sh).exists():
+            return [sh, "-i"]
+    return ["/bin/sh", "-i"]
+
+
+def _shell_label() -> str:
+    """Human-readable label for the OS shell that will be spawned."""
+    shell_argv = _default_shell()
+    exe = Path(shell_argv[0]).stem.lower()
+    if "pwsh" in exe or "powershell" in exe:
+        return "PowerShell"
+    if "zsh" in exe:
+        return "zsh"
+    if "bash" in exe:
+        return "bash"
+    if "cmd" in exe:
+        return "Command Prompt"
+    return exe
 
 
 class PtySession:
@@ -74,7 +199,7 @@ class PtySession:
         self.cols = cols
         self.rows = rows
 
-        self._pty: Optional[WinPTY] = None
+        self._pty: Any = None
         self._pid: Optional[int] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -90,10 +215,16 @@ class PtySession:
         self.user_id: Optional[int] = None
         self._idle_timer: Optional[threading.Timer] = None
         self._idle_seconds: float = 300.0  # 5 min — gives user time to reconnect
+        self._shell_label: str = _shell_label()
 
     @property
     def status(self) -> str:
         return self._status
+
+    @property
+    def shell_label(self) -> str:
+        """Human-readable name of the OS shell being used (e.g. 'PowerShell', 'bash')."""
+        return self._shell_label
 
     @property
     def pid(self) -> Optional[int]:
@@ -109,10 +240,10 @@ class PtySession:
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Spawn the underlying shell and begin pumping output."""
-        if not PTY_AVAILABLE or WinPTY is None:
+        if not PTY_AVAILABLE or _NativePTY is None:
             raise RuntimeError(
                 "Native PTY is not available on this platform. "
-                "Install pywinpty (Windows only)."
+                "Install pywinpty on Windows."
             )
         self._loop = loop
 
@@ -120,7 +251,7 @@ class PtySession:
         appname = argv[0]
         cmdline_args = " ".join(f'"{a}"' if " " in a else a for a in argv[1:]) if len(argv) > 1 else None
         try:
-            self._pty = WinPTY(self.cols, self.rows)
+            self._pty = _NativePTY(self.cols, self.rows)
             ok = self._pty.spawn(appname, cmdline=cmdline_args, cwd=self.cwd)
             if not ok:
                 raise RuntimeError(f"PTY spawn failed for {appname} {cmdline_args or ''}")

@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT NOT NULL,
     description TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'completed', 'archived')),
-    session_type TEXT NOT NULL DEFAULT 'chat' CHECK(session_type IN ('chat', 'task', 'workflow')),
+    session_type TEXT NOT NULL DEFAULT 'chat' CHECK(session_type IN ('chat', 'task', 'workflow', 'dispatch')),
     metadata TEXT, -- JSON for additional session metadata
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

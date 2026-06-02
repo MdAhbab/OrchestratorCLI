@@ -47,6 +47,12 @@ class SpawnResponse(BaseModel):
     cwd: str
     pid: Optional[int]
     status: str
+    shell_label: str = "Terminal"
+
+
+class WsUrlResponse(BaseModel):
+    """Fresh WebSocket URL for an existing PTY (reconnect / fullscreen)."""
+    ws_url: str
 
 
 class ActiveRuntime(BaseModel):
@@ -57,6 +63,7 @@ class ActiveRuntime(BaseModel):
     cwd: str
     pid: Optional[int]
     status: str
+    shell_label: str = "Terminal"
     ws_url: Optional[str] = None
     started_at: Optional[datetime] = None
 
@@ -202,6 +209,7 @@ def _active_runtime_snapshots(limit: int = 50, offset: int = 0) -> ActiveRuntime
                 cwd=s.cwd,
                 pid=s.pid,
                 status=s.status,
+                shell_label=s.shell_label,
                 ws_url=f"/ws/terminals/{s.runtime_id}?token={pty_manager.generate_ws_token(s.runtime_id)}",
             )
         )
@@ -240,7 +248,7 @@ async def spawn_runtime(
     if not PTY_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Native PTY unavailable on this platform (Windows + pywinpty required).",
+            detail="Native PTY unavailable on this platform.",
         )
 
     if spawn.provider_id is not None:
@@ -269,6 +277,9 @@ async def spawn_runtime(
             provider_name = row["display_name"]
 
     now = utc_now()
+    # Determine actual shell label before inserting the DB record
+    from backend.services.pty_service import _shell_label as _get_shell_label
+    shell_lbl = _get_shell_label()
     cursor = await db.execute(
         """
         INSERT INTO cli_runtimes (
@@ -279,7 +290,7 @@ async def spawn_runtime(
         (
             spawn.session_id,
             spawn.provider_id,
-            "powershell",
+            shell_lbl,
             cwd,
             now.isoformat(),
         ),
@@ -322,7 +333,29 @@ async def spawn_runtime(
         cwd=session.cwd,
         pid=session.pid,
         status=session.status,
+        shell_label=session.shell_label,
     )
+
+
+@router.post("/{runtime_id:int}/ws-token", response_model=WsUrlResponse)
+async def refresh_ws_token(
+    runtime_id: int = Depends(verify_runtime_exists),
+    user_id: int = Depends(get_current_user_id),
+) -> WsUrlResponse:
+    """Issue a new single-use WebSocket token for an active PTY session."""
+    session = pty_manager.get(runtime_id)
+    if session is None or not session.is_alive():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active PTY for runtime {runtime_id} not found",
+        )
+    if session.user_id not in (None, user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Runtime belongs to another user",
+        )
+    token = pty_manager.generate_ws_token(runtime_id)
+    return WsUrlResponse(ws_url=f"/ws/terminals/{runtime_id}?token={token}")
 
 
 @router.get("/{runtime_id:int}", response_model=RuntimeDetailResponse)

@@ -2,17 +2,21 @@
 
 ## Overview
 
-This repository has three main areas:
+This repository has four main areas:
 
 ### 1. Main orchestrator app (`backend/` + `frontend/`)
 
 The production multi-agent orchestration platform. Started with `python run.py` from the repo root.
 
-### 2. Downloader page (`downloader_page/`)
+### 2. Desktop shell (`desktop/`)
+
+Electron wrapper that packages the main app as a local Windows `.exe` installer or macOS `.app`/DMG.
+
+### 3. Downloader page (`downloader_page/`)
 
 Public-facing marketing/download site. Separate FastAPI + React app.
 
-### 3. Installer builder (`release/installer/`)
+### 4. Installer builder (`release/installer/`)
 
 Scripts that package the orchestrator into Windows/macOS installers.
 
@@ -62,6 +66,15 @@ IBMbob/
 │
 ├── frontend/                     # React + Vite UI
 │   └── src/
+│
+├── desktop/                      # Electron desktop app shell
+│   ├── src/
+│   ├── build/                    # tracked app icons
+│   └── release/                  # ignored package output
+│
+├── data/                         # generated local DB/key files; only .gitkeep tracked
+├── uploads/                      # generated upload/artifact storage; only .gitkeep tracked
+├── runtime/                      # generated cache/tmp data; only .gitkeep tracked
 │
 ├── shared/                       # Shared workspace context
 │   ├── skill.md

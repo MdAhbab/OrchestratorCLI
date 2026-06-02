@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { FileText, Download } from "lucide-react";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiPath } from "../lib/api";
 
 type Artifact = {
   id: number;
-  filename: string;
+  name: string;
   artifact_type?: string;
   session_id?: number;
 };
@@ -54,10 +54,11 @@ export function ArtifactsPanel() {
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <FileText className="h-3 w-3 shrink-0 text-indigo-500" />
-            <span className="truncate font-mono">{a.filename}</span>
+            <span className="truncate font-mono">{a.name || "artifact"}</span>
           </span>
           <a
-            href={`/api/workspace/artifacts/${a.id}`}
+            href={apiPath(`/workspace/artifacts/${a.id}/download`)}
+            download={a.name || undefined}
             className="flex shrink-0 items-center gap-0.5 text-[10px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
             title="Download artifact"
           >

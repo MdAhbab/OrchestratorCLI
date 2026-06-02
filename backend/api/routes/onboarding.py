@@ -293,8 +293,9 @@ async def complete_onboarding(
     ]
     for name in all_provider_names:
         cfg = payload.cli_configs.get(name)
+        forced = name in ORCHESTRATOR_LLM_NAMES or name in INFRA_PROVIDER_NAMES
         pref_pairs.append((f"cli.{name}.enabled", enabled_map.get(name, name in selected), "cli"))
-        pref_pairs.append((f"cli.{name}.configured", bool(cfg), "cli"))
+        pref_pairs.append((f"cli.{name}.configured", bool(cfg) or forced, "cli"))
         if cfg:
             if cfg.model:
                 pref_pairs.append((f"cli.{name}.model", cfg.model, "cli"))
