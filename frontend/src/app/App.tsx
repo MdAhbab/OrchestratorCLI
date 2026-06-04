@@ -7,6 +7,7 @@ import { TopBar } from "./components/TopBar";
 import { ChatView, INITIAL_MSGS, type Division, type Msg } from "./components/ChatView";
 import { ProcessesView } from "./components/ProcessesView";
 import { Toaster } from "./components/ui/sonner";
+import { toast } from "sonner";
 import { ThemeProvider } from "./components/theme";
 import { StoreProvider, useStore } from "./components/store";
 import { Onboarding } from "./components/Onboarding";
@@ -260,6 +261,7 @@ function Shell() {
         let finalMetadata: Record<string, unknown> = {};
         let finalMessageId = streamMsgId;
         let tokensUsed = 0;
+        let streamError: string | null = null;
 
         await readSseJsonStream(res, (event) => {
           if (event.type === "start" && typeof event.session_id === "number") {
@@ -277,6 +279,8 @@ function Shell() {
                   : row,
               ),
             );
+          } else if (event.type === "error" && typeof event.message === "string") {
+            streamError = event.message;
           } else if (event.type === "done") {
             if (typeof event.session_id === "number") finalSessionId = event.session_id;
             if (typeof event.message_id === "number") finalMessageId = String(event.message_id);
@@ -287,41 +291,60 @@ function Shell() {
           }
         });
 
-        notifySessionsChanged();
-        const meta = finalMetadata as {
-          thinking?: string[];
-          divisions?: Division[];
-          artifacts?: Msg["artifacts"];
-          model?: string;
-        };
-        const divisions = (meta.divisions || []) as Division[];
-        setMsgs((m) =>
-          m.map((row) =>
-            row.id === streamMsgId
-              ? {
-                  ...row,
-                  id: finalMessageId,
-                  thinking: meta.thinking || [],
-                  divisions,
-                  artifacts: meta.artifacts || [],
-                  model: meta.model,
-                }
-              : row,
-          ),
-        );
-        if (divisions.length > 0) {
-          setClis((prev) => applyDivisionsToAgents(prev, divisions));
-          setView("processes");
-          requestAnimationFrame(() => {
-            processesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (streamError) {
+          toast.error(`Stream error: ${streamError}`);
+          setMsgs((m) =>
+            m.map((row) =>
+              row.id === streamMsgId
+                ? {
+                    ...row,
+                    id: `err-${Date.now()}`,
+                    content: `[Error] ${streamError}`,
+                  }
+                : row,
+            ),
+          );
+        } else {
+          notifySessionsChanged();
+          const meta = finalMetadata as {
+            thinking?: string[];
+            divisions?: Division[];
+            artifacts?: Msg["artifacts"];
+            model?: string;
+            plan_quality?: string;
+            plan_quality_reason?: string;
+          };
+          const divisions = (meta.divisions || []) as Division[];
+          setMsgs((m) =>
+            m.map((row) =>
+              row.id === streamMsgId
+                ? {
+                    ...row,
+                    id: finalMessageId,
+                    thinking: meta.thinking || [],
+                    divisions,
+                    artifacts: meta.artifacts || [],
+                    model: meta.model,
+                    plan_quality: meta.plan_quality,
+                    plan_quality_reason: meta.plan_quality_reason,
+                  }
+                : row,
+            ),
+          );
+          if (divisions.length > 0) {
+            setClis((prev) => applyDivisionsToAgents(prev, divisions));
+            setView("processes");
+            requestAnimationFrame(() => {
+              processesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }
+          void trackAnalyticsEvent("message_received", {
+            sessionId: finalSessionId,
+            tokensUsed,
           });
-        }
-        void trackAnalyticsEvent("message_received", {
-          sessionId: finalSessionId,
-          tokensUsed,
-        });
-        if (divisions.length > 0) {
-          notifyUser("Orchestrator", "Task plan ready — agents dispatched.", prefs);
+          if (divisions.length > 0) {
+            notifyUser("Orchestrator", "Task plan ready — agents dispatched.", prefs);
+          }
         }
       } else if (res.ok) {
         const data = await res.json();
@@ -340,6 +363,8 @@ function Shell() {
           divisions: data.metadata?.divisions || [],
           artifacts: data.metadata?.artifacts || [],
           model: data.metadata?.model,
+          plan_quality: data.metadata?.plan_quality,
+          plan_quality_reason: data.metadata?.plan_quality_reason,
         };
         const divisions = (data.metadata?.divisions || []) as Division[];
         if (divisions.length > 0) {
@@ -359,6 +384,7 @@ function Shell() {
         }
       } else {
         const detail = await parseApiError(res);
+        toast.error(`Orchestrator error: ${detail}`);
         const errReply: Msg = {
           id: `err-${Date.now()}`,
           role: "orchestrator",
@@ -373,18 +399,41 @@ function Shell() {
         });
       }
     } catch (err) {
-      if (isAbortError(err)) return;
+      if (isAbortError(err)) {
+        setMsgs((m) => m.filter((row) => !row.id.startsWith("stream-")));
+        return;
+      }
       console.error("Failed to send message:", err);
       const timedOut = err instanceof DOMException && err.name === "TimeoutError";
-      const errReply: Msg = {
-        id: `err-${Date.now()}`,
-        role: "orchestrator",
-        ts: new Date().toTimeString().slice(0, 5),
-        content: timedOut
-          ? "Backend timed out. Press Ctrl+C in the terminal running `python run.py`, then start it again."
-          : "Network error: Failed to reach the backend. Is `python run.py` running?",
-      };
-      setMsgs((m) => [...m, errReply]);
+      const errMsg = timedOut
+        ? "Backend timed out. Press Ctrl+C in the terminal running `python run.py`, then start it again."
+        : "Network error: Failed to reach the backend. Is `python run.py` running?";
+      
+      toast.error(errMsg);
+      setMsgs((m) => {
+        const hasStream = m.some((row) => row.id.startsWith("stream-"));
+        if (hasStream) {
+          return m.map((row) =>
+            row.id.startsWith("stream-")
+              ? {
+                  ...row,
+                  id: `err-${Date.now()}`,
+                  content: `[Error] ${errMsg}`,
+                }
+              : row
+          );
+        } else {
+          return [
+            ...m,
+            {
+              id: `err-${Date.now()}`,
+              role: "orchestrator",
+              ts: new Date().toTimeString().slice(0, 5),
+              content: errMsg,
+            },
+          ];
+        }
+      });
       setChatInput(v);
     } finally {
       setChatSending(false);

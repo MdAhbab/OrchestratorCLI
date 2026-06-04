@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 _NativePTY: Any = None
 _PTY_AVAILABLE = False
+_PTY_IMPORT_ERROR: Optional[str] = None
 
 if sys.platform == "win32":
     try:
@@ -32,6 +33,8 @@ if sys.platform == "win32":
 
         _PTY_AVAILABLE = True
     except Exception as e:  # pragma: no cover
+        import traceback
+        _PTY_IMPORT_ERROR = traceback.format_exc()
         logger.warning("pywinpty unavailable: %s", e)
 else:
     _PTY_AVAILABLE = True  # PosixPTY defined below; import may still fail at runtime
@@ -68,6 +71,7 @@ class PosixPTY:
         appname: str,
         cmdline: Optional[str] = None,
         cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> bool:
         argv = [appname]
         if cmdline:
@@ -87,7 +91,10 @@ class PosixPTY:
                     os.close(self._slave)
                 if cwd:
                     os.chdir(cwd)
-                os.execvp(argv[0], argv)
+                if env is not None:
+                    os.execvpe(argv[0], argv, env)
+                else:
+                    os.execvp(argv[0], argv)
             except Exception:
                 os._exit(127)
         self._pid = pid
@@ -140,6 +147,23 @@ class PosixPTY:
 
 if sys.platform != "win32":
     _NativePTY = PosixPTY
+
+
+def _build_cli_env() -> Dict[str, str]:
+    """Return a copy of os.environ with ~/.ai-clis bin dirs prepended to PATH.
+
+    This makes CLIs installed by the app available inside every spawned PTY
+    without the user having to modify their global shell profile.
+    """
+    env = dict(os.environ)
+    try:
+        from backend.services.cli_installer import get_cli_bin_dirs  # lazy to avoid circular
+        extra_dirs = [str(p) for p in get_cli_bin_dirs()]
+    except Exception:
+        extra_dirs = []
+    if extra_dirs:
+        env["PATH"] = os.pathsep.join(extra_dirs) + os.pathsep + env.get("PATH", "")
+    return env
 
 
 def _default_shell() -> List[str]:
@@ -241,18 +265,27 @@ class PtySession:
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Spawn the underlying shell and begin pumping output."""
         if not PTY_AVAILABLE or _NativePTY is None:
-            raise RuntimeError(
+            msg = (
                 "Native PTY is not available on this platform. "
                 "Install pywinpty on Windows."
             )
+            if sys.platform == "win32" and _PTY_IMPORT_ERROR:
+                msg += f"\nImport error details:\n{_PTY_IMPORT_ERROR}\nIf you see 'DLL load failed', make sure the Microsoft Visual C++ Redistributable is installed on your system."
+            raise RuntimeError(msg)
         self._loop = loop
 
+        aug_env = _build_cli_env()
         argv = _default_shell()
         appname = argv[0]
         cmdline_args = " ".join(f'"{a}"' if " " in a else a for a in argv[1:]) if len(argv) > 1 else None
         try:
             self._pty = _NativePTY(self.cols, self.rows)
-            ok = self._pty.spawn(appname, cmdline=cmdline_args, cwd=self.cwd)
+            if sys.platform == "win32":
+                # pywinpty expects env as a list of "KEY=VALUE" strings
+                win_env = [f"{k}={v}" for k, v in aug_env.items()]
+                ok = self._pty.spawn(appname, cmdline=cmdline_args, cwd=self.cwd, env=win_env)
+            else:
+                ok = self._pty.spawn(appname, cmdline=cmdline_args, cwd=self.cwd, env=aug_env)
             if not ok:
                 raise RuntimeError(f"PTY spawn failed for {appname} {cmdline_args or ''}")
             self._pid = getattr(self._pty, "pid", None)

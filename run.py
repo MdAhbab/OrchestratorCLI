@@ -356,7 +356,8 @@ class ProcessManager:
             print_info("This may take a few minutes...")
             
             # Determine npm command based on OS
-            npm_cmd = "npm.cmd" if platform.system() == "Windows" else "npm"
+            is_windows = platform.system() == "Windows"
+            npm_cmd = "npm.cmd" if is_windows else "npm"
             
             # Run npm install
             result = subprocess.run(
@@ -364,6 +365,7 @@ class ProcessManager:
                 cwd=self.frontend_dir,
                 capture_output=False,  # Show output in real-time
                 text=True,
+                shell=is_windows,
                 timeout=600  # 10 minute timeout
             )
             
@@ -697,7 +699,8 @@ class ProcessManager:
             print_info(f"Configuring frontend API proxy -> {backend_target}")
              
             # Determine npm command based on OS
-            npm_cmd = "npm.cmd" if platform.system() == "Windows" else "npm"
+            is_windows = platform.system() == "Windows"
+            npm_cmd = "npm.cmd" if is_windows else "npm"
 
             frontend_env = os.environ.copy()
             frontend_env["VITE_BACKEND_TARGET"] = backend_target
@@ -711,6 +714,7 @@ class ProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                shell=is_windows,
                 bufsize=1,
                 universal_newlines=True
             )

@@ -65,11 +65,12 @@ async function uploadSharedFiles(
       setFiles((p) =>
         p.map((f) => (f.id === id ? { ...f, status: "synced" as const } : f)),
       );
-    } catch {
+    } catch (e: any) {
       const id = placeholders[i].id;
       setFiles((p) =>
         p.map((f) => (f.id === id ? { ...f, status: "stale" as const } : f)),
       );
+      toast.error(`Failed to upload file "${files[i].name}".`);
     }
   }
   onResync?.();

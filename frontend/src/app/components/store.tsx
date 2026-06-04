@@ -245,8 +245,12 @@ type AppState = {
   prefs: Prefs;
 };
 
+export type SyncState = "synced" | "saving" | "error";
+
 type Ctx = AppState & {
   backendHydrated: boolean;
+  syncState: SyncState;
+  retrySync: () => void;
   setOnboarded: (v: boolean) => void;
   setWorkspace: (w: Workspace | null) => void;
   setProviders: React.Dispatch<React.SetStateAction<Provider[]>>;
@@ -670,32 +674,111 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const [syncState, setSyncState] = useState<SyncState>("synced");
+
+  const settingsRetryCount = useRef(0);
+  const settingsRetryTimer = useRef<number | null>(null);
+
+  const orchestratorRetryCount = useRef(0);
+  const orchestratorRetryTimer = useRef<number | null>(null);
+
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const performSettingsSync = (retryAttempt = 0) => {
+    if (!stateRef.current.prefs.autoSync) return;
+    setSyncState("saving");
+    if (settingsRetryTimer.current) window.clearTimeout(settingsRetryTimer.current);
+
+    const payload = {
+      preferences: toBackendPreferences(stateRef.current),
+    };
+
+    void apiFetch("/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (res.ok) {
+          settingsRetryCount.current = 0;
+          setSyncState((curr) => (curr === "error" ? "error" : "synced"));
+        } else {
+          throw new Error("Settings sync failed");
+        }
+      })
+      .catch(() => {
+        setSyncState("error");
+        if (retryAttempt < 5) {
+          const delay = Math.pow(2, retryAttempt) * 1000;
+          settingsRetryCount.current = retryAttempt + 1;
+          settingsRetryTimer.current = window.setTimeout(() => {
+            performSettingsSync(retryAttempt + 1);
+          }, delay);
+        } else {
+          toast.error("Settings sync failed after multiple attempts.");
+        }
+      });
+  };
+
+  const performOrchestratorSync = (retryAttempt = 0) => {
+    if (!stateRef.current.prefs.autoSync) return;
+    setSyncState("saving");
+    if (orchestratorRetryTimer.current) window.clearTimeout(orchestratorRetryTimer.current);
+
+    void apiFetch("/orchestrator/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orchestratorToApiPayload(stateRef.current.orchestrator)),
+    })
+      .then((res) => {
+        if (res.ok) {
+          orchestratorRetryCount.current = 0;
+          setSyncState((curr) => (curr === "error" ? "error" : "synced"));
+        } else {
+          throw new Error("Orchestrator config sync failed");
+        }
+      })
+      .catch(() => {
+        setSyncState("error");
+        if (retryAttempt < 5) {
+          const delay = Math.pow(2, retryAttempt) * 1000;
+          orchestratorRetryCount.current = retryAttempt + 1;
+          orchestratorRetryTimer.current = window.setTimeout(() => {
+            performOrchestratorSync(retryAttempt + 1);
+          }, delay);
+        } else {
+          toast.error("Orchestrator config sync failed after multiple attempts.");
+        }
+      });
+  };
+
+  const retrySync = () => {
+    settingsRetryCount.current = 0;
+    orchestratorRetryCount.current = 0;
+    performSettingsSync(0);
+    performOrchestratorSync(0);
+  };
+
   useEffect(() => {
     if (!backendHydrated) return;
     if (!state.prefs.autoSync) {
       if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+      if (settingsRetryTimer.current) window.clearTimeout(settingsRetryTimer.current);
       return;
     }
     if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+    if (settingsRetryTimer.current) window.clearTimeout(settingsRetryTimer.current);
+
     backendSyncTimer.current = window.setTimeout(() => {
-      const payload = {
-        preferences: toBackendPreferences(state),
-      };
-      void apiFetch("/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then((res) => {
-        if (!res.ok) {
-          toast.error("Settings sync failed — changes may not be saved.");
-        }
-      }).catch(() => {
-        toast.error("Settings sync failed — backend unreachable.");
-      });
+      performSettingsSync(0);
     }, 500);
 
     return () => {
       if (backendSyncTimer.current) window.clearTimeout(backendSyncTimer.current);
+      if (settingsRetryTimer.current) window.clearTimeout(settingsRetryTimer.current);
     };
   }, [backendHydrated, state.onboarded, state.workspace, state.providers, state.prefs]);
 
@@ -703,25 +786,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!backendHydrated) return;
     if (!state.prefs.autoSync) {
       if (orchestratorSyncTimer.current) window.clearTimeout(orchestratorSyncTimer.current);
+      if (orchestratorRetryTimer.current) window.clearTimeout(orchestratorRetryTimer.current);
       return;
     }
     if (orchestratorSyncTimer.current) window.clearTimeout(orchestratorSyncTimer.current);
+    if (orchestratorRetryTimer.current) window.clearTimeout(orchestratorRetryTimer.current);
+
     orchestratorSyncTimer.current = window.setTimeout(() => {
-      void apiFetch("/orchestrator/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orchestratorToApiPayload(state.orchestrator)),
-      }).then((res) => {
-        if (!res.ok) {
-          toast.error("Orchestrator config sync failed.");
-        }
-      }).catch(() => {
-        toast.error("Orchestrator config sync failed — backend unreachable.");
-      });
+      performOrchestratorSync(0);
     }, 500);
 
     return () => {
       if (orchestratorSyncTimer.current) window.clearTimeout(orchestratorSyncTimer.current);
+      if (orchestratorRetryTimer.current) window.clearTimeout(orchestratorRetryTimer.current);
     };
   }, [backendHydrated, state.orchestrator, state.prefs.autoSync]);
 
@@ -730,6 +807,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       value={{
         ...state,
         backendHydrated,
+        syncState,
+        retrySync,
         setOnboarded: (v) => setState((s) => ({ ...s, onboarded: v })),
         setWorkspace: (w) => setState((s) => ({ ...s, workspace: w })),
         setProviders: (u) =>

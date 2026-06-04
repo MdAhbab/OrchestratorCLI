@@ -2,6 +2,7 @@ import { ChildProcess, spawn, spawnSync } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import http from "http";
+import net from "net";
 import path from "path";
 import {
   getCacheDir,
@@ -138,9 +139,34 @@ export function ensureBackendVenv(
   return true;
 }
 
+function checkPortFree(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => {
+      resolve(false);
+    });
+    server.once("listening", () => {
+      server.close(() => {
+        resolve(true);
+      });
+    });
+    server.listen(port, host);
+  });
+}
+
+async function findFreePort(startPort: number, host: string): Promise<number> {
+  let port = startPort;
+  while (true) {
+    if (await checkPortFree(port, host)) {
+      return port;
+    }
+    port++;
+  }
+}
+
 export class BackendManager {
   private process: ChildProcess | null = null;
-  readonly port: number;
+  port: number;
   private readonly host = "127.0.0.1";
 
   constructor(port = DEFAULT_BACKEND_PORT) {
@@ -155,6 +181,8 @@ export class BackendManager {
     if (this.process && this.process.exitCode === null) {
       return;
     }
+
+    this.port = await findFreePort(this.port, this.host);
 
     const projectRoot = getProjectRoot();
     const backendDir = path.join(projectRoot, "backend");

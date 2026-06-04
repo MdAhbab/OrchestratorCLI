@@ -13,6 +13,8 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from backend.services import quota_service
+from backend.services import artifact_lock as _alock
 
 
 from backend.utils import utc_now
@@ -61,9 +63,11 @@ class DispatchResponse(BaseModel):
 async def _load_session_history(
     db: aiosqlite.Connection,
     session_id: int,
-    limit: int = 20,
+    limit: Optional[int] = None,
 ) -> List[Dict[str, str]]:
     """Load recent messages for LLM context (MED-001)."""
+    from backend.config import settings
+    actual_limit = limit if limit is not None else settings.context_window_limit
     cur = await db.execute(
         """
         SELECT role, content FROM messages
@@ -71,7 +75,7 @@ async def _load_session_history(
         ORDER BY id DESC
         LIMIT ?
         """,
-        (session_id, limit),
+        (session_id, actual_limit),
     )
     rows = await cur.fetchall()
     return [{"role": str(r["role"]), "content": str(r["content"])} for r in reversed(rows)]
@@ -211,7 +215,11 @@ async def _delegate_divisions_to_agents(
     session_id: int,
     divisions: List[Dict[str, Any]],
 ) -> List[str]:
-    """Assign tasks to CLI agents via A2A bus (HIGH-006)."""
+    """Assign tasks to CLI agents via A2A bus (HIGH-006).
+
+    A-CRIT-01: Providers with exhausted quota are skipped; 'warn' providers are
+    still used but the reroute is annotated in the division metadata.
+    """
     from backend.services.agents.cli_agent import CLIAgentAdapter
     from backend.services.agents.registry import AgentDescriptor, get_agent_registry
 
@@ -223,25 +231,80 @@ async def _delegate_divisions_to_agents(
             'openai', 'anthropic', 'google', 'ollama', 'bob')
         """
     )
-    agents = {str(r["name"]): r for r in await cur.fetchall()}
+    all_agents = {str(r["name"]): r for r in await cur.fetchall()}
+
+    # Load quota states for all agent providers in one bulk query (A-CRIT-01).
+    quota_states = await quota_service.get_quota_states_bulk(db, user_id)
+
     delegated: List[str] = []
     for div in divisions:
         slug = str(div.get("short") or div.get("agent") or "").lower()
         task = str(div.get("task") or "")
         if not slug or not task:
             continue
-        row = agents.get(slug)
+
+        # Exact slug match only (A-MED-02: exact slug required, fuzzy matching removed to prevent misrouting).
+        row = all_agents.get(slug)
         if not row:
-            for name, r in agents.items():
-                if name in slug or slug in name:
-                    row = r
-                    break
-        if not row:
-            continue
+            msg = f"No enabled agent provider matches exact slug: {slug!r} (available: {list(all_agents.keys())})"
+            logger.error("_delegate_divisions_to_agents: %s", msg)
+            raise ValueError(msg)
+
+        provider_db_id = int(row["id"])
+        qstate = quota_states.get(provider_db_id, {"status": "unlimited"})
+
+        if qstate.get("status") == "exhausted":
+            fallback_agent = None
+            for alt_slug, alt_row in all_agents.items():
+                if alt_slug != slug:
+                    alt_db_id = int(alt_row["id"])
+                    alt_qstate = quota_states.get(alt_db_id, {"status": "unlimited"})
+                    if alt_qstate.get("status") != "exhausted":
+                        fallback_agent = alt_slug
+                        break
+            if fallback_agent:
+                old_slug = slug
+                slug = fallback_agent
+                row = all_agents[slug]
+                provider_db_id = int(row["id"])
+                qstate = quota_states.get(provider_db_id, {"status": "unlimited"})
+                logger.warning(
+                    "Quota exhausted for agent %s. Rerouting to fallback agent %s.",
+                    old_slug, fallback_agent,
+                )
+                div["rerouted_from"] = old_slug
+                div["reroute_reason"] = "quota"
+
+                # Emit a quota.reroute WS event
+                try:
+                    from backend.api.websockets.manager import connection_manager
+                    await connection_manager.broadcast({
+                        "type": "quota.reroute",
+                        "from": old_slug,
+                        "to": fallback_agent,
+                        "session_id": session_id,
+                    })
+                except Exception as ws_err:
+                    logger.warning("Failed to emit quota.reroute event: %s", ws_err, exc_info=True)
+            else:
+                logger.error(
+                    "Quota exhausted for agent %s (used=%s / limit=%s) — skipping division.",
+                    slug, qstate.get("used"), qstate.get("limit"),
+                )
+                div["rerouted_from"] = slug
+                div["reroute_reason"] = "quota_exhausted"
+                continue
+
+        if qstate.get("status") == "warn":
+            logger.info(
+                "Quota warn for agent %s (%.0f%% used) — proceeding but flagging.",
+                slug, (qstate.get("pct", 0) * 100),
+            )
+
         desc = AgentDescriptor.from_provider_row(
             name=str(row["name"]),
             display_name=str(row["display_name"] or row["name"]),
-            provider_id=int(row["id"]),
+            provider_id=provider_db_id,
         )
         registry.register(desc)
         adapter = CLIAgentAdapter(desc)
@@ -602,27 +665,26 @@ async def _write_divisions_artifact(
 
     text = "\n".join(lines).rstrip() + "\n"
 
-    def write_files() -> None:
-        # Legacy: workspace/shared/divisions.md
-        shared_dir.mkdir(parents=True, exist_ok=True)
-        legacy_file = (shared_dir / "divisions.md").resolve()
+    # A-HIGH-01: use locked atomic write to prevent concurrent write races.
+    async def _write_with_lock(target: Path) -> None:
         try:
-            legacy_file.relative_to(workspace_path)
-            legacy_file.write_text(text, encoding="utf-8")
+            target.relative_to(workspace_path)
         except ValueError:
-            logger.error("Security: path traversal prevented for legacy divisions.md")
+            logger.error("Security: path traversal prevented for %s", target)
+            return
+        await _alock.locked_write(target, text)
 
-        # Per-session: workspace/shared/artifacts/<session_id>/divisions.md
-        if session_id is not None:
-            session_art_dir = (shared_dir / "artifacts" / str(session_id)).resolve()
-            try:
-                session_art_dir.relative_to(workspace_path)
-                session_art_dir.mkdir(parents=True, exist_ok=True)
-                (session_art_dir / "divisions.md").write_text(text, encoding="utf-8")
-            except ValueError:
-                logger.error("Security: path traversal prevented for session artifact dir")
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    await _write_with_lock(shared_dir / "divisions.md")
 
-    await asyncio.to_thread(write_files)
+    if session_id is not None:
+        session_art_dir = (shared_dir / "artifacts" / str(session_id)).resolve()
+        try:
+            session_art_dir.relative_to(workspace_path)
+            session_art_dir.mkdir(parents=True, exist_ok=True)
+            await _write_with_lock(session_art_dir / "divisions.md")
+        except ValueError:
+            logger.error("Security: path traversal prevented for session artifact dir")
 
 
 async def update_division_status_for_provider(
@@ -646,17 +708,15 @@ async def update_division_status_for_provider(
 
     slug = provider_slug.lower().strip()
 
-    def rewrite() -> None:
-        text = target_file.read_text(encoding="utf-8")
+    # A-HIGH-01: locked read-modify-write prevents concurrent status-update races.
+    def _modifier(text: str) -> str:
         pattern = re.compile(
             rf"(##[^\n]+\n(?:.*?\n)*?- Short id: {re.escape(slug)}\s*\n- Status: )\w+",
             re.IGNORECASE,
         )
-        updated = pattern.sub(rf"\1{status}", text, count=1)
-        if updated != text:
-            target_file.write_text(updated, encoding="utf-8")
+        return pattern.sub(rf"\1{status}", text, count=1)
 
-    await asyncio.to_thread(rewrite)
+    await _alock.locked_read_modify_write(target_file, _modifier)
 
 
 async def _persist_assistant_message(
@@ -729,6 +789,15 @@ async def _persist_assistant_message(
             ),
         )
         await db.commit()
+
+        # A-CRIT-01: increment quota_used for the provider that served this request.
+        await quota_service.record_usage(
+            db,
+            provider_db_id=orch_provider_id,
+            user_id=user_id,
+            tokens=tokens_used,
+            requests=1,
+        )
 
     return int(ai_msg_id), tokens_used, orch_provider_id
 
@@ -803,55 +872,68 @@ async def _stream_chat_events(
     db: aiosqlite.Connection,
     user_id: int,
 ) -> AsyncIterator[str]:
-    """SSE stream for chat when stream=true (MED-013)."""
-    session_id, ctx, routing_strategy = await _prepare_chat_context(request, db, user_id)
-    yield f"data: {json.dumps({'type': 'start', 'session_id': session_id})}\n\n"
-
-    engine = get_orchestrator_engine()
-    plan = await engine.run(
-        db,
-        user_id,
-        ctx,
-        model=request.model_name,
-        routing_strategy=routing_strategy.value,
-        preferred_provider_db_id=request.provider_id,
-    )
-
-    metadata = plan.to_metadata_dict()
-    if request.metadata:
-        metadata.update(request.metadata)
-    divisions = metadata.get("divisions") or []
-    if divisions:
-        delegated = await _delegate_divisions_to_agents(
-            db, user_id, int(session_id), divisions
-        )
-        metadata["delegated_agents"] = delegated
-        aggregate_agent_results(plan, {a: "task assigned" for a in delegated})
-        metadata = plan.to_metadata_dict()
-
+    """SSE stream for chat when stream=true."""
+    session_id: Any = None
     try:
-        await _write_divisions_artifact(db, user_id, request.message, metadata)
-    except Exception:
-        logger.exception("failed to write divisions.md")
-        metadata.setdefault("thinking", []).append(
-            "Warning: could not write divisions.md to workspace shared folder."
+        session_id, ctx, routing_strategy = await _prepare_chat_context(request, db, user_id)
+        yield f"data: {json.dumps({'type': 'start', 'session_id': session_id})}\n\n"
+
+        engine = get_orchestrator_engine()
+        plan = await engine.run(
+            db,
+            user_id,
+            ctx,
+            model=request.model_name,
+            routing_strategy=routing_strategy.value,
+            preferred_provider_db_id=request.provider_id,
         )
 
-    content = plan.content or ""
-    for i in range(0, len(content), 80):
-        chunk = content[i : i + 80]
-        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+        metadata = plan.to_metadata_dict()
+        if request.metadata:
+            metadata.update(request.metadata)
+        divisions = metadata.get("divisions") or []
+        if divisions:
+            delegated = await _delegate_divisions_to_agents(
+                db, user_id, int(session_id), divisions
+            )
+            metadata["delegated_agents"] = delegated
+            aggregate_agent_results(plan, {a: "task assigned" for a in delegated})
+            metadata = plan.to_metadata_dict()
 
-    ai_msg_id, tokens_used, _ = await _persist_assistant_message(
-        db,
-        user_id=user_id,
-        session_id=int(session_id),
-        plan=plan,
-        metadata=metadata,
-        request_message=request.message,
-    )
+        try:
+            await _write_divisions_artifact(db, user_id, request.message, metadata)
+        except Exception:
+            logger.exception("failed to write divisions.md")
+            metadata.setdefault("thinking", []).append(
+                "Warning: could not write divisions.md to workspace shared folder."
+            )
 
-    yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': ai_msg_id, 'tokens_used': tokens_used, 'metadata': metadata})}\n\n"
+        content = plan.content or ""
+        for i in range(0, len(content), 80):
+            chunk = content[i : i + 80]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+        ai_msg_id, tokens_used, _ = await _persist_assistant_message(
+            db,
+            user_id=user_id,
+            session_id=int(session_id),
+            plan=plan,
+            metadata=metadata,
+            request_message=request.message,
+        )
+
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': ai_msg_id, 'tokens_used': tokens_used, 'metadata': metadata})}\n\n"
+
+    except Exception as exc:
+        logger.exception("stream_chat_events error: %s", exc)
+        err_payload = json.dumps({
+            "type": "error",
+            "message": str(exc),
+            "session_id": session_id,
+        })
+        yield f"data: {err_payload}\n\n"
+        # Always close with a done event so the client can unblock chatSending.
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': None, 'tokens_used': 0, 'metadata': {}})}\n\n"
 
 
 @router.get("/providers/health")
@@ -872,6 +954,30 @@ async def orchestrator_provider_health(
         }
         for h in health
     ]
+
+
+@router.get("/quota")
+async def get_quota_states(
+    db: aiosqlite.Connection = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> List[Dict[str, Any]]:
+    """Return live quota state for every provider credential of the current user (A-CRIT-01)."""
+    states = await quota_service.get_quota_states_bulk(db, user_id)
+    # Enrich with provider display name.
+    result: List[Dict[str, Any]] = []
+    for provider_db_id, state in states.items():
+        cur = await db.execute(
+            "SELECT name, display_name FROM providers WHERE id = ? LIMIT 1",
+            (provider_db_id,),
+        )
+        row = await cur.fetchone()
+        result.append({
+            "provider_id": provider_db_id,
+            "provider_name": row["name"] if row else str(provider_db_id),
+            "display_name": row["display_name"] if row else str(provider_db_id),
+            **state,
+        })
+    return result
 
 
 @router.post("/chat", response_model=ChatResponse)

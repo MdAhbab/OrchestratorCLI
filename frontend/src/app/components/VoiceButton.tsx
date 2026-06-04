@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Mic, MicOff, Square, X } from "lucide-react";
+import { toast } from "sonner";
 
 type Props = {
   onTranscript: (text: string) => void;
@@ -80,7 +81,22 @@ export function VoiceButton({ onTranscript, onPartial }: Props) {
       partialRef.current = "";
       setPartial("");
     };
-    rec.onerror = () => setRecording(false);
+    rec.onerror = (e: any) => {
+      setRecording(false);
+      let errorMsg = "Speech recognition error occurred.";
+      if (e.error === "not-allowed") {
+        errorMsg = "Microphone access denied. Please check your browser/system microphone permissions.";
+      } else if (e.error === "no-speech") {
+        errorMsg = "No speech detected. Please try speaking again.";
+      } else if (e.error === "audio-capture") {
+        errorMsg = "No microphone found or audio capture failed.";
+      } else if (e.error === "network") {
+        errorMsg = "Network communication error. Check your connection.";
+      } else if (e.error) {
+        errorMsg = `Speech recognition failed: ${e.error}`;
+      }
+      toast.error(errorMsg);
+    };
     rec.start();
     recRef.current = rec;
     setRecording(true);

@@ -26,9 +26,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   appVersion: (() => {
     try {
       const v = ipcRenderer.sendSync("app-version") as string;
-      return typeof v === "string" && v ? v : "0.8.0";
+      return typeof v === "string" && v ? v : "0.8.1";
     } catch {
-      return "0.8.0";
+      return "0.8.1";
     }
   })(),
 });

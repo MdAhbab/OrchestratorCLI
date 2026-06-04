@@ -32,6 +32,8 @@ export type Msg = {
   divisions?: Division[];
   artifacts?: { name: string; kind: string }[];
   model?: string;
+  plan_quality?: string;
+  plan_quality_reason?: string;
 };
 
 export const INITIAL_MSGS: Msg[] = [];
@@ -305,12 +307,17 @@ function MessageBubble({
         <OrchestratorLogo size={32} className="drop-shadow-[0_0_14px_rgba(139,92,246,0.5)]" />
       </div>
       <div className="min-w-0 flex-1 space-y-2">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-[12.5px] text-zinc-900 dark:text-white">Orchestrator</span>
           <span className="font-mono text-[9.5px] text-zinc-500">
             {m.model ?? "orchestrator"}
           </span>
           <span className="font-mono text-[9.5px] text-zinc-400">{m.ts}</span>
+          {m.plan_quality === "degraded" && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/40 bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+              ⚠️ Degraded Heuristic Plan ({m.plan_quality_reason || "offline fallback"})
+            </span>
+          )}
         </div>
         <div className="text-[13.5px] leading-relaxed text-zinc-700 dark:text-zinc-300">
           {m.content}

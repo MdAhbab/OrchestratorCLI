@@ -1,13 +1,36 @@
 import { motion } from "motion/react";
 import { Download, Apple, Terminal, Github } from "lucide-react";
 
+// ─── Release config ──────────────────────────────────────────────────────────
+// Update RELEASE_VERSION when cutting a new release; asset filenames must match
+// the artifactName patterns in desktop/package.json.
+const RELEASE_VERSION = "0.8.1";
+const RELEASES_BASE = `https://github.com/MdAhbab/IBMbob/releases/download/v${RELEASE_VERSION}`;
+
+const DOWNLOAD_LINKS: Record<string, string> = {
+  Windows: `${RELEASES_BASE}/AI-Orchestrator-Setup-${RELEASE_VERSION}.exe`,
+  macOS:   `${RELEASES_BASE}/AI-Orchestrator-${RELEASE_VERSION}-arm64.dmg`,
+  Linux:   `${RELEASES_BASE}/AI-Orchestrator-${RELEASE_VERSION}.AppImage`,
+};
+
+// ─── OS detection ────────────────────────────────────────────────────────────
+function detectOS(): string {
+  if (typeof navigator === "undefined") return "";
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes("win")) return "Windows";
+  if (ua.includes("mac")) return "macOS";
+  if (ua.includes("linux") || ua.includes("x11")) return "Linux";
+  return "";
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 export function DownloadCTA() {
-  const downloadLink = "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing";
+  const detectedOS = detectOS();
 
   const platforms = [
-    { name: "Windows", icon: Download, sub: "Windows 10 · 11" },
-    { name: "macOS", icon: Apple, sub: "Apple Silicon · Intel" },
-    { name: "Linux", icon: Terminal, sub: ".deb · .rpm · AppImage" },
+    { name: "Windows", icon: Download, sub: "Windows 10 · 11 · x64" },
+    { name: "macOS",   icon: Apple,    sub: "Apple Silicon · Intel" },
+    { name: "Linux",   icon: Terminal, sub: "AppImage · amd64" },
   ];
 
   return (
@@ -58,37 +81,55 @@ export function DownloadCTA() {
               </span>
             </h2>
             <p className="mt-5 text-neutral-400 text-xl mb-8">
-              Install in 30 seconds. Auto‑detects every AI CLI on your machine.
+              Install in seconds. Auto‑detects every AI CLI on your machine.
             </p>
 
             {/* Platform downloads */}
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {platforms.map((p, i) => (
-                <motion.a
-                  key={p.name}
-                  href={downloadLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5, delay: 0.1 + i * 0.08 }}
-                  className="group relative flex items-center gap-3 px-4 py-3.5 rounded-xl border border-white/10 backdrop-blur-md transition-all text-left bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 cursor-pointer"
-                >
-                <div className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center transition-colors group-hover:bg-white/10">
-                  <p.icon className="w-4 h-4 text-neutral-200" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white text-base" style={{ fontWeight: 500 }}>
-                    Download for {p.name}
-                  </div>
-                  <div className="text-sm text-neutral-500 truncate">
-                    {p.sub}
-                  </div>
-                </div>
-                <Download className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" />
-                </motion.a>
-              ))}
+              {platforms.map((p, i) => {
+                const isDetected = detectedOS === p.name;
+                return (
+                  <motion.a
+                    key={p.name}
+                    href={DOWNLOAD_LINKS[p.name]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.5, delay: 0.1 + i * 0.08 }}
+                    className={[
+                      "group relative flex items-center gap-3 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-left cursor-pointer",
+                      isDetected
+                        ? "border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/40 hover:bg-violet-500/15"
+                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20",
+                    ].join(" ")}
+                  >
+                    {isDetected && (
+                      <span className="absolute -top-2.5 left-3 px-2 py-0.5 rounded-full bg-violet-500 text-white text-[10px] font-semibold tracking-wide uppercase">
+                        Recommended
+                      </span>
+                    )}
+                    <div className={[
+                      "w-9 h-9 rounded-lg border flex items-center justify-center transition-colors",
+                      isDetected
+                        ? "bg-violet-500/20 border-violet-500/40 group-hover:bg-violet-500/30"
+                        : "bg-white/5 border-white/10 group-hover:bg-white/10",
+                    ].join(" ")}>
+                      <p.icon className="w-4 h-4 text-neutral-200" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-base" style={{ fontWeight: 500 }}>
+                        Download for {p.name}
+                      </div>
+                      <div className="text-sm text-neutral-500 truncate">
+                        {p.sub}
+                      </div>
+                    </div>
+                    <Download className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" />
+                  </motion.a>
+                );
+              })}
             </div>
 
             {/* Footer note */}
@@ -103,7 +144,7 @@ export function DownloadCTA() {
                 <span>View source on GitHub</span>
               </a>
               <span className="hidden sm:inline text-neutral-700">·</span>
-              <span>MIT licensed · v1.0.0‑beta.3</span>
+              <span>MIT licensed · v{RELEASE_VERSION}</span>
             </div>
           </div>
         </motion.div>
@@ -123,10 +164,38 @@ export function Footer() {
           <span>© 2026 AI CLI Orchestrator. Built by devs, for devs.</span>
         </div>
         <div className="flex items-center gap-6">
-          <a href="#" className="hover:text-white transition-colors">Docs</a>
-          <a href="https://github.com/MdAhbab/IBMbob" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
-          <a href="#" className="hover:text-white transition-colors">Discord</a>
-          <a href="#" className="hover:text-white transition-colors">Privacy</a>
+          <a
+            href="https://github.com/MdAhbab/IBMbob/blob/main/README.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white transition-colors"
+          >
+            Docs
+          </a>
+          <a
+            href="https://github.com/MdAhbab/IBMbob"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white transition-colors"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://github.com/MdAhbab/IBMbob/discussions"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white transition-colors"
+          >
+            Discussions
+          </a>
+          <a
+            href="https://github.com/MdAhbab/IBMbob/blob/main/LICENSE"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white transition-colors"
+          >
+            License
+          </a>
         </div>
       </div>
     </footer>

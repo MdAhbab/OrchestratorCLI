@@ -28,3 +28,6 @@ pywinpty>=2.0.13 ; sys_platform == "win32"
 
 # WebSocket support for FastAPI
 websockets>=12.0
+
+# File locking for single-writer artifact safety (A-HIGH-01)
+filelock>=3.13.0

@@ -4,6 +4,7 @@ Central orchestrator engine — task decomposition, routing, fallback, aggregati
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,9 @@ from .messages import OrchestratorPlan
 from .router import ProviderRouter
 
 logger = logging.getLogger(__name__)
+
+# A-HIGH-04: hard ceiling on the entire LLM planning chain (seconds).
+ORCHESTRATOR_TIMEOUT_S = 90
 
 # Map DB provider `name` to orchestrator LLM registry id.
 LLM_PROVIDER_ALIASES = {
@@ -55,12 +59,15 @@ class OrchestratorEngine:
         """Load orchestrator LLM provider configs + decrypted API keys from DB."""
         from backend.utils.credentials import decrypt_credential
         from backend.config import settings as app_settings
+        from backend.services.quota_service import get_quota_states_bulk
 
         env_keys = {
             "grok": app_settings.grok_api_key,
             "deepseek-api": app_settings.deepseek_api_key,
             "gemini-api": app_settings.gemini_api_key,
         }
+
+        quota_states = await get_quota_states_bulk(db, user_id)
 
         configs: List[ProviderConfig] = []
         cur = await db.execute(
@@ -96,6 +103,15 @@ class OrchestratorEngine:
                     extra = json.loads(row["additional_config"])
                 except Exception:
                     pass
+
+            # Populate quota state into extra
+            db_id = row["id"]
+            qstate = quota_states.get(db_id, {"status": "unlimited", "used": 0, "pct": 0.0})
+            extra["provider_db_id"] = db_id
+            extra["quota_status"] = qstate.get("status", "unlimited")
+            extra["quota_used"] = qstate.get("used", 0)
+            extra["quota_pct"] = qstate.get("pct", 0.0)
+
             configs.append(
                 ProviderConfig(
                     provider_id=registry_id,
@@ -218,46 +234,61 @@ class OrchestratorEngine:
 
         configured = self.registry.configured_providers(llm_configs)
         if not configured:
-            return offline_plan(
+            plan = offline_plan(
                 ctx,
                 "No orchestrator LLM API keys configured (Grok, DeepSeek, or Gemini).",
             )
+            # A-HIGH-03: mark degraded quality so UI can render a badge.
+            plan.metadata["plan_quality"] = "degraded"
+            return plan
 
         try:
-            result, decision = await self.router.complete_with_fallback(
-                llm_configs,
-                messages,
-                model=model or self.default_model,
-                max_tokens=4096,
-                routing_strategy=strategy,
-                user_id=user_id,
-                preferred_provider_id=preferred_llm,
-            )
-            try:
-                parsed = parse_llm_plan(result.content, ctx.user_message)
-            except json.JSONDecodeError as jde:
-                logger.warning(
-                    f"JSON parsing failed on initial LLM plan response. Truncated output: {result.content[:500]}... Error: {jde}. Retrying with higher max_tokens=8192."
+            # A-HIGH-04: hard ceiling on the entire LLM planning chain.
+            async with asyncio.timeout(ORCHESTRATOR_TIMEOUT_S):
+                result, decision = await self.router.complete_with_fallback(
+                    llm_configs,
+                    messages,
+                    model=model or self.default_model,
+                    max_tokens=4096,
+                    routing_strategy=strategy,
+                    user_id=user_id,
+                    preferred_provider_id=preferred_llm,
+                    db=db,
                 )
                 try:
-                    result, decision = await self.router.complete_with_fallback(
-                        llm_configs,
-                        messages,
-                        model=model or self.default_model,
-                        max_tokens=8192,
-                        routing_strategy=strategy,
-                        user_id=user_id,
-                        preferred_provider_id=preferred_llm,
-                    )
                     parsed = parse_llm_plan(result.content, ctx.user_message)
-                except json.JSONDecodeError as jde_retry:
-                    logger.error(
-                        f"JSON parsing failed again on retried LLM plan response. Truncated output: {result.content[:500]}... Error: {jde_retry}."
+                except json.JSONDecodeError as jde:
+                    logger.warning(
+                        "JSON parsing failed on initial LLM plan response. "
+                        "Truncated output: %s... Error: %s. Retrying with max_tokens=8192.",
+                        result.content[:500], jde,
                     )
-                    return offline_plan(
-                        ctx,
-                        f"LLM planner returned invalid JSON structure even after retrying. Error: {jde_retry}"
-                    )
+                    try:
+                        result, decision = await self.router.complete_with_fallback(
+                            llm_configs,
+                            messages,
+                            model=model or self.default_model,
+                            max_tokens=8192,
+                            routing_strategy=strategy,
+                            user_id=user_id,
+                            preferred_provider_id=preferred_llm,
+                            db=db,
+                        )
+                        parsed = parse_llm_plan(result.content, ctx.user_message)
+                    except json.JSONDecodeError as jde_retry:
+                        logger.error(
+                            "JSON parsing failed again on retried LLM plan response. "
+                            "Truncated output: %s... Error: %s.",
+                            result.content[:500], jde_retry,
+                        )
+                        plan = offline_plan(
+                            ctx,
+                            f"LLM planner returned invalid JSON structure even after retrying. Error: {jde_retry}"
+                        )
+                        # A-HIGH-03: tag degraded quality.
+                        plan.metadata["plan_quality"] = "degraded"
+                        plan.metadata["plan_quality_reason"] = "json_parse_failure"
+                        return plan
 
             plan = build_plan_from_dict(
                 parsed,
@@ -278,10 +309,24 @@ class OrchestratorEngine:
                 "fallbacks": decision.fallbacks_used,
                 "routing_strategy": decision.routing_strategy or strategy,
             }
+            # A-HIGH-03: mark plan quality as 'ok' when LLM succeeds.
+            plan.metadata["plan_quality"] = "ok"
+            if decision.fallbacks_used:
+                plan.metadata["plan_quality"] = "degraded"
+                plan.metadata["plan_quality_reason"] = "primary_provider_failed"
+            return plan
+        except TimeoutError:
+            logger.error("Orchestrator LLM chain timed out after %ss", ORCHESTRATOR_TIMEOUT_S)
+            plan = offline_plan(ctx, f"Orchestrator timed out after {ORCHESTRATOR_TIMEOUT_S}s — local routing used.")
+            plan.metadata["plan_quality"] = "degraded"
+            plan.metadata["plan_quality_reason"] = "timeout"
             return plan
         except Exception as e:
             logger.exception("Orchestrator LLM chain failed: %s", e)
-            return offline_plan(ctx, str(e))
+            plan = offline_plan(ctx, str(e))
+            plan.metadata["plan_quality"] = "degraded"
+            plan.metadata["plan_quality_reason"] = "exception"
+            return plan
 
 
 _engine: Optional[OrchestratorEngine] = None

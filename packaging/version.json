@@ -1,6 +1,6 @@
 {
-  "version": "0.8.0",
-  "release_date": "2026-06-02",
+  "version": "0.8.1",
+  "release_date": "2026-06-05",
   "build_number": 2,
   "release_notes": "0.8.0 desktop + installer stabilization",
   "min_requirements": {

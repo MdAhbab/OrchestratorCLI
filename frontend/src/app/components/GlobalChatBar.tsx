@@ -1,5 +1,6 @@
 import { ArrowUp, CornerDownLeft, Paperclip } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { VoiceButton } from "./VoiceButton";
 import { apiFetch } from "../lib/api";
 
@@ -25,10 +26,13 @@ export function GlobalChatBar({
   onAttached?: (relativePaths: string[]) => void;
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const attachFiles = async (files: FileList | null) => {
     if (!files?.length) return;
+    setUploading(true);
     const uploaded: string[] = [];
+    const failed: string[] = [];
     for (const file of Array.from(files)) {
       try {
         const fd = new FormData();
@@ -39,19 +43,38 @@ export function GlobalChatBar({
         }
         const res = await apiFetch(path, { method: "POST", body: fd, timeoutMs: 30_000 });
         if (!res.ok) {
-          console.warn("attach failed", await res.text());
+          const detail = await res.text().catch(() => "");
+          failed.push(file.name);
+          toast.error(
+            `Failed to upload "${file.name}"${detail ? `: ${detail.slice(0, 120)}` : ""}`,
+            { id: `upload-fail-${file.name}` },
+          );
           continue;
         }
         const body = await res.json();
         const rel = (body.relative_path as string) || (body.filename as string) || file.name;
         uploaded.push(rel);
       } catch (e) {
-        console.warn("attach error", e);
+        failed.push(file.name);
+        toast.error(
+          `Upload error for "${file.name}" — backend unreachable.`,
+          { id: `upload-err-${file.name}` },
+        );
       }
     }
-    if (uploaded.length) onAttached?.(uploaded);
+    setUploading(false);
+    if (uploaded.length) {
+      onAttached?.(uploaded);
+      if (failed.length === 0) {
+        toast.success(
+          `${uploaded.length} file${uploaded.length > 1 ? "s" : ""} attached`,
+          { duration: 2500 },
+        );
+      }
+    }
     if (fileRef.current) fileRef.current.value = "";
   };
+
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-3 sm:px-6 sm:pb-5">
@@ -94,14 +117,18 @@ export function GlobalChatBar({
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
                   title={
-                    sessionId == null
+                    uploading
+                      ? "Uploading…"
+                      : sessionId == null
                       ? "Attach to workspace/shared"
                       : "Attach files to session"
                   }
-                  className="flex items-center gap-1 rounded-md border border-zinc-200/70 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-100 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
+                  className="flex items-center gap-1 rounded-md border border-zinc-200/70 bg-zinc-50 px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-300 dark:hover:bg-white/[0.05]"
                 >
-                  <Paperclip className="h-3 w-3" /> Attach
+                  <Paperclip className={`h-3 w-3 ${uploading ? "animate-spin" : ""}`} />
+                  {uploading ? "Uploading…" : "Attach"}
                 </button>
                 <span className="ml-1 hidden items-center gap-1 font-mono text-[10px] text-zinc-400 md:flex">
                   <CornerDownLeft className="h-2.5 w-2.5" /> send · ⇧↵ newline
@@ -109,11 +136,11 @@ export function GlobalChatBar({
               </div>
               <button
                 type="submit"
-                disabled={!value.trim() || disabled}
+                disabled={!value.trim() || disabled || uploading}
                 className="flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-[12px] text-white shadow-sm transition hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
                 <ArrowUp className="h-3.5 w-3.5" />
-                {disabled ? "Sending…" : "Dispatch"}
+                {uploading ? "Uploading…" : disabled ? "Sending…" : "Dispatch"}
               </button>
             </div>
           </div>

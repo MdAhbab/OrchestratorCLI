@@ -71,32 +71,67 @@ export function Settings({
   clis?: CliRuntime[];
 }) {
   const [tab, setTab] = useState<Tab>("general");
+  const { syncState, retrySync } = useStore();
+
+  const SyncIndicator = () => {
+    if (syncState === "synced") {
+      return (
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono normal-case tracking-normal flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Saved
+        </span>
+      );
+    }
+    if (syncState === "saving") {
+      return (
+        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono normal-case tracking-normal flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+          Saving...
+        </span>
+      );
+    }
+    return (
+      <button
+        onClick={retrySync}
+        className="text-[10px] text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 font-mono normal-case tracking-normal flex items-center gap-1 hover:underline cursor-pointer"
+        title="Settings sync failed. Click to retry."
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-ping" />
+        Not saved — Retry
+      </button>
+    );
+  };
 
   return (
     <div className="h-full min-h-0 overflow-hidden">
       <div className="mx-auto flex h-full max-w-[1200px] flex-col md:flex-row">
         {/* Mobile: horizontal scrollable tab bar */}
-        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200/70 bg-white/40 px-3 py-2 backdrop-blur scrollbar-hide dark:border-white/[0.06] dark:bg-zinc-950/40 md:hidden">
-          <button
-            onClick={onClose}
-            className="shrink-0 rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/[0.05]"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-          </button>
-          {TABS.map((t) => (
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-200/70 bg-white/40 px-3 py-2 backdrop-blur dark:border-white/[0.06] dark:bg-zinc-950/40 md:hidden w-full">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] transition ${
-                tab === t.id
-                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/[0.05]"
-              }`}
+              onClick={onClose}
+              className="shrink-0 rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/[0.05]"
             >
-              <t.icon className="h-3 w-3" />
-              {t.label}
+              <ArrowLeft className="h-3.5 w-3.5" />
             </button>
-          ))}
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11.5px] transition ${
+                  tab === t.id
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-white/[0.05]"
+                }`}
+              >
+                <t.icon className="h-3 w-3" />
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="pl-2 shrink-0">
+            <SyncIndicator />
+          </div>
         </div>
 
         {/* Desktop sidebar */}
@@ -107,8 +142,9 @@ export function Settings({
           >
             <ArrowLeft className="h-3 w-3" /> Back
           </button>
-          <div className="px-2 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-            Settings
+          <div className="px-2 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500 flex items-center justify-between">
+            <span>Settings</span>
+            <SyncIndicator />
           </div>
           <div className="mt-3 space-y-0.5">
             {TABS.map((t) => (
@@ -137,7 +173,7 @@ export function Settings({
               </button>
             ))}
           </div>
-        </aside>
+        </aside>   </aside>
 
         <div className="scrollbar-thin flex-1 overflow-y-auto px-4 pb-44 pt-5 sm:px-6 sm:pb-48 md:px-8 md:pt-7">
           <motion.div
@@ -411,6 +447,8 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
   const [secret, setSecret] = useState("");
   const [hasStoredCredential, setHasStoredCredential] = useState(p.configured);
   const [busy, setBusy] = useState(false);
+  // B-HIGH-04: loading state while credentials are being fetched from backend.
+  const [credLoading, setCredLoading] = useState(false);
 
   useEffect(() => {
     setHasStoredCredential(p.configured);
@@ -419,6 +457,7 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
   useEffect(() => {
     if (!open || !p.dbId) return;
     let cancelled = false;
+    setCredLoading(true);
     void (async () => {
       try {
         const r = await apiFetch(`/providers/${p.dbId}/credentials`);
@@ -433,12 +472,15 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
           setSecret("");
           setHasStoredCredential(p.configured);
         }
+      } finally {
+        if (!cancelled) setCredLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [open, p.dbId]);
+
 
   const persistEnabled = async (v: boolean) => {
     // Optimistic update
@@ -586,6 +628,14 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
       </div>
       {open && (
         <div className="space-y-3 border-t border-zinc-200/70 bg-zinc-50/40 px-4 py-4 dark:border-white/[0.05] dark:bg-black/30">
+          {/* B-HIGH-04: Show spinner while credentials are loading from backend */}
+          {credLoading && (
+            <div className="flex items-center gap-2 py-6 text-[12px] text-zinc-400">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-600 dark:border-white/20 dark:border-t-white/60" />
+              Loading credentials…
+            </div>
+          )}
+          {!credLoading && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
@@ -609,7 +659,8 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
               />
             </div>
           </div>
-          {p.authMethod === "ssh" ? (
+          )}
+          {!credLoading && (p.authMethod === "ssh" ? (
             <div>
               <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
                 Host
@@ -663,8 +714,9 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
                 </button>
               </div>
             </div>
-          )}
-          <CliInstallHint providerId={p.id} />
+          ))}
+          {!credLoading && <CliInstallHint providerId={p.id} />}
+          {!credLoading && (
           <div>
             <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
               Daily cap (USD)
@@ -677,6 +729,8 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
               className={inp + " font-mono w-full"}
             />
           </div>
+          )}
+          {!credLoading && (
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -695,8 +749,11 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
               <Save className="h-3 w-3" /> Save
             </button>
           </div>
+          )}
         </div>
       )}
+
+
     </div>
   );
 }

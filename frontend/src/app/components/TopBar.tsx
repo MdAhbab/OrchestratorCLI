@@ -77,6 +77,7 @@ export function TopBar({
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement | null>(null);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [backendOffline, setBackendOffline] = useState(false);
 
   // Listen for Electron auto-update events
   useEffect(() => {
@@ -95,11 +96,21 @@ export function TopBar({
     const load = async () => {
       try {
         const r = await apiFetch("/workspace/git", { timeoutMs: 12_000 });
-        if (r.ok && !c) setGit(await r.json());
-      } catch {}
+        if (r.ok) {
+          if (!c) setGit(await r.json());
+          setBackendOffline(false);
+        } else {
+          setBackendOffline(true);
+        }
+      } catch {
+        setBackendOffline(true);
+      }
       try {
         const r2 = await apiFetch("/analytics/events/recent?limit=15", { timeoutMs: 12_000 });
-        if (r2.ok && !c) setNotifs(await r2.json());
+        if (r2.ok) {
+          if (!c) setNotifs(await r2.json());
+          setBackendOffline(false);
+        }
       } catch {}
     };
     void load();
@@ -133,6 +144,11 @@ export function TopBar({
 
   return (
     <div>
+      {backendOffline && (
+        <div className="bg-red-600 px-4 py-1.5 text-[11.5px] text-white text-center font-medium animate-pulse">
+          ⚠️ Connection lost: The backend server is offline. Please make sure the backend is running.
+        </div>
+      )}
       {updateVersion && (
         <UpdateBanner version={updateVersion} onInstall={handleInstallUpdate} />
       )}

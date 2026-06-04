@@ -35,6 +35,7 @@ export function RuntimeLogPanel({ runtimeId }: { runtimeId?: number }) {
     if (selected == null) return;
     let cancelled = false;
     const load = async () => {
+      if (document.hidden) return;
       try {
         const res = await apiFetch(`/runtimes/${selected}`);
         if (!res.ok) return;

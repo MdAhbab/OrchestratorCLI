@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     
     # Application
     app_name: str = "AI Orchestrator Backend"
-    app_version: str = "0.8.0"
+    app_version: str = "0.8.1"
     debug: bool = True
     
     # API
@@ -148,6 +148,7 @@ class Settings(BaseSettings):
     timeout_seconds: int = 30
     enable_caching: bool = True
     enable_streaming: bool = True
+    context_window_limit: int = 30
     
     # CLI Runtime
     max_concurrent_processes: int = 5

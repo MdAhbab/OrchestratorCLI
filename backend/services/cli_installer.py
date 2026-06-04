@@ -42,6 +42,22 @@ def get_cli_bin_dir() -> Path:
     return get_cli_prefix() / "node_modules" / ".bin"
 
 
+def get_cli_bin_dirs() -> list:
+    """Return all bin directories under ~/.ai-clis that should be on PATH.
+
+    Returns existing directories only; callers may prepend the whole list to
+    os.environ["PATH"] without checking individually.
+    """
+    prefix = get_cli_prefix()
+    candidates = [
+        prefix / "node_modules" / ".bin",  # standard npm --prefix layout
+        prefix / ".bin",                    # legacy / flat installs
+    ]
+    if sys.platform == "win32":
+        candidates.append(prefix)           # some Windows CLIs land directly in prefix
+    return [p for p in candidates if p.is_dir()]
+
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -286,7 +302,7 @@ async def ensure_node(emit) -> bool:
 
 def detect_cli(slug: str, bin_name: str) -> CLIStatus:
     """
-    Check if a CLI binary is available — first in ~/.ai-clis/.bin, then in PATH.
+    Check if a CLI binary is available — first in ~/.ai-clis/node_modules/.bin, then in PATH.
     Returns CLIStatus with installed=True and the path if found.
     """
     # Check local prefix first
