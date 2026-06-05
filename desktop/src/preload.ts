@@ -27,9 +27,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   appVersion: (() => {
     try {
       const v = ipcRenderer.sendSync("app-version") as string;
-      return typeof v === "string" && v ? v : "0.8.1";
+      return typeof v === "string" && v ? v : "0.9.1";
     } catch {
-      return "0.8.1";
+      return "0.9.1";
     }
   })(),
+});
+
+// Lightweight desktop-detection bridge (WS-1): lets the renderer reliably tell
+// desktop from browser and branch native features (folder picker, etc.).
+contextBridge.exposeInMainWorld("ibbobDesktop", {
+  isDesktop: true,
+  platform: process.platform,
 });

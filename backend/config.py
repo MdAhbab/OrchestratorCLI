@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     
     # Application
     app_name: str = "AI Orchestrator Backend"
-    app_version: str = "0.8.1"
+    app_version: str = "0.9.1"
     debug: bool = True
     
     # API

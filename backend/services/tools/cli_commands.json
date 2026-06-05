@@ -1,0 +1,52 @@
+{
+  "claude-code": {
+    "run":    "claude -p {prompt} --output-format stream-json",
+    "model":  "--model {model}",
+    "auto":   "--permission-mode acceptEdits",
+    "yolo":   "--dangerously-skip-permissions",
+    "usage":  "/usage",
+    "login":  "claude auth login",
+    "stop":   "claude stop",
+    "resume": "claude --resume"
+  },
+  "gemini-cli": {
+    "run":    "gemini -p {prompt}",
+    "model":  "--model {model}",
+    "auto":   "--yolo --sandbox",
+    "yolo":   "--yolo",
+    "usage":  "/stats",
+    "login":  "gemini",
+    "stop":   "",
+    "resume": ""
+  },
+  "codex-cli": {
+    "run":    "codex exec {prompt} --json",
+    "model":  "-m {model}",
+    "auto":   "--sandbox workspace-write",
+    "yolo":   "--dangerously-bypass-approvals-and-sandbox",
+    "usage":  "codex doctor",
+    "login":  "codex login",
+    "stop":   "",
+    "resume": "codex resume"
+  },
+  "copilot-cli": {
+    "run":    "github-copilot-cli -p {prompt} --allow-all-tools",
+    "model":  "--model {model}",
+    "auto":   "--allow-all-tools",
+    "yolo":   "--allow-all",
+    "usage":  "/usage",
+    "login":  "github-copilot-cli",
+    "stop":   "",
+    "resume": "github-copilot-cli --continue"
+  },
+  "_default": {
+    "run":    "{bin} -p {prompt}",
+    "model":  "--model {model}",
+    "auto":   "",
+    "yolo":   "",
+    "usage":  "",
+    "login":  "{bin}",
+    "stop":   "",
+    "resume": ""
+  }
+}

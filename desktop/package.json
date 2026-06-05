@@ -1,6 +1,6 @@
 {
   "name": "ibm-bob-desktop",
-  "version": "0.8.1",
+  "version": "0.9.1",
   "description": "AI Orchestrator - native desktop shell",
   "private": true,
   "main": "dist/main.js",

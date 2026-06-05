@@ -9,6 +9,7 @@ import { AgentsToolsPanel } from "./AgentsToolsPanel";
 import { ArtifactsPanel } from "./ArtifactsPanel";
 import { RuntimeLogPanel } from "./RuntimeLogPanel";
 import { apiFetch } from "../lib/api";
+import { QuotaBar, useQuota } from "./QuotaBar";
 
 type Tab = "all" | "executing" | "idle" | "limited" | "permission";
 
@@ -39,6 +40,9 @@ export const ProcessesView = forwardRef<
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
+
+  // UI-5: per-agent quota bars — poll lightly (30 s); safe if endpoint is absent
+  const quota = useQuota(30_000);
 
   const filtered = clis.filter((c) => (tab === "all" ? true : c.state === tab));
   const totalUsed = clis.reduce((s, c) => s + c.used, 0);
@@ -107,16 +111,32 @@ export const ProcessesView = forwardRef<
           }
         >
           <div className="grid gap-3 md:grid-cols-2">
-            {filtered.map((c) => (
-              <TerminalCard
-                key={c.id}
-                cli={c}
-                onRuntime={onRuntime}
-                lazyConnect
-                spawnAllowed={activeRuntimes < parallelism || c.runtimeId != null}
-                highlighted={highlightAgentId === c.id.toLowerCase()}
-              />
-            ))}
+            {filtered.map((c) => {
+              // Normalize provider id for quota lookup: try exact, then lowercase
+              const qId = c.id in quota ? c.id : c.id.toLowerCase();
+              const qs = quota[qId];
+              const handedOff = qs?.status === "preempt" || qs?.status === "exhausted";
+              return (
+                <div key={c.id} className="flex flex-col gap-0">
+                  <TerminalCard
+                    cli={c}
+                    onRuntime={onRuntime}
+                    lazyConnect
+                    spawnAllowed={activeRuntimes < parallelism || c.runtimeId != null}
+                    highlighted={highlightAgentId === c.id.toLowerCase()}
+                  />
+                  {Object.keys(quota).length > 0 && (
+                    <div className="rounded-b-xl border-x border-b border-zinc-200/70 bg-white/60 px-3 py-2 dark:border-white/[0.06] dark:bg-zinc-950/40">
+                      <QuotaBar
+                        providerId={qId}
+                        quota={quota}
+                        showHandedOff={handedOff}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {filtered.length === 0 && (
               <div className="col-span-full rounded-xl border border-dashed border-zinc-300/70 bg-zinc-50/50 px-6 py-10 text-center text-[12px] text-zinc-500 dark:border-white/10 dark:bg-white/[0.02]">
                 {clis.length === 0

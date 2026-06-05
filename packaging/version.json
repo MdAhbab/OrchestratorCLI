@@ -1,8 +1,8 @@
 {
-  "version": "0.8.1",
-  "release_date": "2026-06-05",
-  "build_number": 2,
-  "release_notes": "0.8.0 desktop + installer stabilization",
+  "version": "0.9.1",
+  "release_date": "2026-06-06",
+  "build_number": 3,
+  "release_notes": "0.9.1 — quota-aware pre-emptive CLI handoff, CLI tool layer, self-contained mac DMG, workspace/desktop fixes",
   "min_requirements": {
     "windows": {
       "os": "Windows 10 or later",

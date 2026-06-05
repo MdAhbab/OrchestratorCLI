@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from backend.services import quota_service
 from backend.services import artifact_lock as _alock
+from backend.services.quota_service import QUOTA_PREEMPT_PCT
 
 
 from backend.utils import utc_now
@@ -253,15 +254,23 @@ async def _delegate_divisions_to_agents(
         provider_db_id = int(row["id"])
         qstate = quota_states.get(provider_db_id, {"status": "unlimited"})
 
-        if qstate.get("status") == "exhausted":
-            fallback_agent = None
-            for alt_slug, alt_row in all_agents.items():
-                if alt_slug != slug:
-                    alt_db_id = int(alt_row["id"])
-                    alt_qstate = quota_states.get(alt_db_id, {"status": "unlimited"})
-                    if alt_qstate.get("status") != "exhausted":
-                        fallback_agent = alt_slug
-                        break
+        # Q-2: treat pct >= QUOTA_PREEMPT_PCT (90%) as ineligible, not only exhausted (100%).
+        # This covers both the pre-empt threshold and the hard-exhausted case.
+        agent_pct = float(qstate.get("pct", 0.0))
+        agent_status = str(qstate.get("status", "unlimited"))
+        is_ineligible = (agent_pct >= QUOTA_PREEMPT_PCT) or (agent_status == "exhausted")
+
+        if is_ineligible:
+            # Determine reroute reason for annotation.
+            if agent_status == "exhausted":
+                reroute_reason = "quota_exhausted"
+            else:
+                reroute_reason = "quota_preempt"
+
+            # Q-3 / Q-2: pick the best alternate via handoff.pick_alternate.
+            from backend.services.orchestrator import handoff as _handoff
+            fallback_agent = _handoff.pick_alternate(slug, all_agents, quota_states)
+
             if fallback_agent:
                 old_slug = slug
                 slug = fallback_agent
@@ -269,13 +278,36 @@ async def _delegate_divisions_to_agents(
                 provider_db_id = int(row["id"])
                 qstate = quota_states.get(provider_db_id, {"status": "unlimited"})
                 logger.warning(
-                    "Quota exhausted for agent %s. Rerouting to fallback agent %s.",
-                    old_slug, fallback_agent,
+                    "Agent %s ineligible (pct=%.0f%%, status=%s, reason=%s). "
+                    "Rerouting to %s.",
+                    old_slug, agent_pct * 100, agent_status, reroute_reason, fallback_agent,
                 )
                 div["rerouted_from"] = old_slug
-                div["reroute_reason"] = "quota"
+                div["reroute_reason"] = reroute_reason
 
-                # Emit a quota.reroute WS event
+                # Q-3: enqueue the task on the alternate agent's queue.
+                try:
+                    division_id = str(div.get("short") or div.get("agent") or old_slug)
+                    payload = {
+                        "task": task,
+                        "owns_files": div.get("owns_files"),
+                        "reads_files": div.get("reads_files"),
+                        "depends_on": div.get("depends_on"),
+                    }
+                    await _handoff.enqueue(
+                        db,
+                        session_id=session_id,
+                        division_id=division_id,
+                        agent_slug=fallback_agent,
+                        payload=payload,
+                        rerouted_from=old_slug,
+                    )
+                except Exception as enq_err:
+                    logger.warning(
+                        "Failed to enqueue rerouted task: %s", enq_err, exc_info=True
+                    )
+
+                # Emit a quota.reroute WS event (reuse existing emit pattern).
                 try:
                     from backend.api.websockets.manager import connection_manager
                     await connection_manager.broadcast({
@@ -283,19 +315,23 @@ async def _delegate_divisions_to_agents(
                         "from": old_slug,
                         "to": fallback_agent,
                         "session_id": session_id,
+                        "reason": reroute_reason,
+                        "pct": round(agent_pct, 4),
                     })
                 except Exception as ws_err:
                     logger.warning("Failed to emit quota.reroute event: %s", ws_err, exc_info=True)
             else:
                 logger.error(
-                    "Quota exhausted for agent %s (used=%s / limit=%s) — skipping division.",
-                    slug, qstate.get("used"), qstate.get("limit"),
+                    "Agent %s ineligible (pct=%.0f%%, status=%s) and no alternate available "
+                    "— skipping division (used=%s / limit=%s).",
+                    slug, agent_pct * 100, agent_status,
+                    qstate.get("used"), qstate.get("limit"),
                 )
                 div["rerouted_from"] = slug
-                div["reroute_reason"] = "quota_exhausted"
+                div["reroute_reason"] = reroute_reason
                 continue
 
-        if qstate.get("status") == "warn":
+        if qstate.get("status") == "warn" and not is_ineligible:
             logger.info(
                 "Quota warn for agent %s (%.0f%% used) — proceeding but flagging.",
                 slug, (qstate.get("pct", 0) * 100),

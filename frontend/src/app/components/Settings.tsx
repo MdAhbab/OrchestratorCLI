@@ -315,53 +315,165 @@ function formatBytes(bytes: number): string {
 function GeneralPanel() {
   const { workspace, setWorkspace, prefs, setPrefs } = useStore();
   const { theme, toggle } = useTheme();
+  const isDesktop = Boolean(window.ibbobDesktop?.isDesktop);
+
+  // WS-2: workspace state for the inline editor
+  const [editingPath, setEditingPath] = useState(workspace?.path || "");
+  const [pathValid, setPathValid] = useState<boolean | null>(workspace?.path ? true : null);
+  const [pathValidating, setPathValidating] = useState(false);
+  const [pathError, setPathError] = useState<string | null>(null);
+
+  const handleValidatePath = async (path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) { setPathValid(null); setPathError(null); return; }
+    setPathValidating(true);
+    try {
+      const res = await apiFetch(`/workspace/validate-path?path=${encodeURIComponent(trimmed)}`, { timeoutMs: 10_000 });
+      if (res.ok) {
+        const data = await res.json();
+        setPathValid(!!data.valid);
+        setPathError(data.error || null);
+        if (data.valid) {
+          toast.success("Workspace path is valid.");
+        } else {
+          toast.error(data.error || "Invalid workspace path.");
+        }
+      } else {
+        setPathValid(false);
+        setPathError("Validation service error.");
+        toast.error("Validation service error.");
+      }
+    } catch {
+      setPathValid(false);
+      setPathError("Validation service offline.");
+      toast.error("Validation service offline.");
+    } finally {
+      setPathValidating(false);
+    }
+  };
+
+  const handlePickFolder = async () => {
+    const prevPath = workspace?.path || "";
+    const selectWorkspaceFolder = window.electronAPI?.selectWorkspaceFolder;
+    if (selectWorkspaceFolder) {
+      const path = await selectWorkspaceFolder();
+      if (path) {
+        const name = path.split(/[/\\]/).filter(Boolean).pop() || "workspace";
+        setEditingPath(path);
+        setPathValid(true);
+        setPathError(null);
+        setWorkspace({ path, name });
+        toast.success("Workspace updated.");
+      } else {
+        // canceled
+        if (prevPath) toast.info("Workspace unchanged.");
+      }
+      return;
+    }
+    try {
+      // @ts-ignore
+      if (window.showDirectoryPicker) {
+        // @ts-ignore
+        const h = await window.showDirectoryPicker();
+        const hint = h?.name || "workspace";
+        const value = window.prompt(
+          `Selected "${hint}". Paste the full folder path so the backend can use it.`,
+          workspace?.path || "",
+        );
+        if (value?.trim()) {
+          const name = value.trim().split(/[/\\]/).filter(Boolean).pop() || hint;
+          setEditingPath(value.trim());
+          setWorkspace({ path: value.trim(), name });
+          toast.success("Workspace updated.");
+        }
+        return;
+      }
+    } catch {}
+    const value = window.prompt("Paste the full workspace folder path.", workspace?.path || "");
+    if (value?.trim()) {
+      const name = value.trim().split(/[/\\]/).filter(Boolean).pop() || "workspace";
+      setEditingPath(value.trim());
+      setWorkspace({ path: value.trim(), name });
+      toast.success("Workspace updated.");
+    }
+  };
+
+  const handleApplyPath = () => {
+    const trimmed = editingPath.trim();
+    if (!trimmed || pathValid !== true) return;
+    const name = trimmed.split(/[/\\]/).filter(Boolean).pop() || "workspace";
+    setWorkspace({ path: trimmed, name });
+    toast.success("Workspace updated.");
+  };
+
   return (
     <>
       <SectionTitle title="General" sub="Workspace location, appearance, and typography." />
 
       <div className="rounded-xl border border-zinc-200/70 bg-white/60 px-4 dark:border-white/[0.06] dark:bg-zinc-950/40">
-        <Row title="Workspace folder" desc={workspace?.path || "Not set"}>
-          <button
-            onClick={async () => {
-              const saveManualPath = (hint?: string) => {
-                const value = window.prompt(
-                  hint
-                    ? `Selected "${hint}". Paste the full folder path so the backend can use it.`
-                    : "Paste the full workspace folder path.",
-                  workspace?.path || "",
-                );
-                const path = value?.trim();
-                if (!path) return;
-                const name = path.split(/[/\\]/).filter(Boolean).pop() || hint || "workspace";
-                setWorkspace({ path, name });
-              };
-              const selectWorkspaceFolder = window.electronAPI?.selectWorkspaceFolder;
-              if (selectWorkspaceFolder) {
-                const path = await selectWorkspaceFolder();
-                if (path) {
-                  const name = path.split(/[/\\]/).filter(Boolean).pop() || "workspace";
-                  setWorkspace({ path, name });
-                }
-                return;
-              }
-              try {
-                // @ts-ignore
-                if (window.showDirectoryPicker) {
-                  // @ts-ignore
-                  const h = await window.showDirectoryPicker();
-                  saveManualPath(h?.name || "workspace");
-                  return;
-                }
-              } catch {
-                return;
-              }
-              saveManualPath();
-            }}
-            className="rounded-md border border-zinc-200/70 bg-white px-3 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
-          >
-            Change…
-          </button>
-        </Row>
+        {/* WS-2: Full workspace row with text input + Validate + optional picker */}
+        <div className="flex flex-col gap-3 border-b border-zinc-200/70 px-1 py-4 dark:border-white/[0.05]">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[13px] text-zinc-900 dark:text-white">Workspace folder</div>
+              {workspace?.path ? (
+                <div className="mt-0.5 font-mono text-[10.5px] text-emerald-600 dark:text-emerald-400">
+                  Active workspace: {workspace.path}
+                </div>
+              ) : (
+                <div className="mt-0.5 font-mono text-[10.5px] text-amber-600 dark:text-amber-400">
+                  No active workspace configured.
+                </div>
+              )}
+            </div>
+            {isDesktop && (
+              <button
+                onClick={() => void handlePickFolder()}
+                className="shrink-0 rounded-md border border-zinc-200/70 bg-white px-3 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
+              >
+                Browse…
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <input
+                value={editingPath}
+                onChange={(e) => {
+                  setEditingPath(e.target.value);
+                  setPathValid(null);
+                  setPathError(null);
+                }}
+                placeholder="~/projects/your-app or C:\Projects\app"
+                className="flex-1 rounded-lg border border-zinc-200/70 bg-white px-3 py-1.5 font-mono text-[11.5px] text-zinc-800 outline-none focus:border-indigo-400 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
+              />
+              <button
+                type="button"
+                disabled={!editingPath.trim() || pathValidating}
+                onClick={() => void handleValidatePath(editingPath)}
+                className="shrink-0 rounded-md border border-zinc-200/70 bg-white px-2.5 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
+              >
+                {pathValidating ? "Checking…" : "Validate"}
+              </button>
+              <button
+                type="button"
+                disabled={pathValid !== true || !editingPath.trim()}
+                onClick={handleApplyPath}
+                className="shrink-0 rounded-md bg-zinc-900 px-2.5 py-1.5 text-[11.5px] text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+              >
+                Apply
+              </button>
+            </div>
+            {pathValid === true && (
+              <p className="font-mono text-[10px] text-emerald-500">✓ Valid path</p>
+            )}
+            {pathValid === false && (
+              <p className="font-mono text-[10px] text-rose-500">
+                ✗ {pathError || "Invalid path."}
+              </p>
+            )}
+          </div>
+        </div>
         <Row title="Theme" desc="Dark, light, or system">
           <button
             onClick={toggle}

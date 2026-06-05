@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 QuotaStatus = Literal["ok", "warn", "exhausted", "unlimited"]
 
-WARN_THRESHOLD_PCT = 0.85  # 85 % of limit → warn
+WARN_THRESHOLD_PCT = 0.85      # 85 % of limit → warn
+QUOTA_PREEMPT_PCT = 0.90       # 90 % of limit → pre-empt (reroute before exhaustion)
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +104,101 @@ async def record_usage(
 
     except Exception:
         logger.exception("record_usage failed for provider_db_id=%s", provider_db_id)
+
+
+async def record_cli_usage(
+    db: aiosqlite.Connection,
+    provider_db_id: int,
+    user_id: int,
+    parsed: Dict[str, Any],
+) -> None:
+    """
+    Update quota_used / quota_limit / quota_reset_at from a parsed CLI usage dict
+    (output of cli_usage.parse_usage_from_text).
+
+    Q-1: worker-CLI usage signal feed-in.
+    Q-4: honours 'quota_window' key if present ('daily'|'weekly'|'monthly'|'hourly').
+    Does NOT remove or rename existing functions.
+    """
+    if not parsed:
+        return
+    try:
+        cur = await db.execute(
+            """
+            SELECT id, quota_used, quota_limit, quota_reset_at
+            FROM provider_credentials
+            WHERE provider_id = ? AND user_id = ? AND is_active = 1
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (provider_db_id, user_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return  # No credential row — nothing to track.
+
+        cred_id: int = row["id"]
+        now = utc_now()
+
+        # Determine the reset window from the parsed dict (Q-4), defaulting to daily.
+        window = str(parsed.get("quota_window") or "daily").lower()
+        _WINDOW_DELTA = {
+            "hourly": timedelta(hours=1),
+            "daily":  timedelta(days=1),
+            "weekly": timedelta(weeks=1),
+            "monthly": timedelta(days=30),
+        }
+        window_delta = _WINDOW_DELTA.get(window, timedelta(days=1))
+
+        updates: Dict[str, Any] = {}
+
+        # Apply parsed used/limit if present.
+        if parsed.get("used") is not None:
+            updates["quota_used"] = int(parsed["used"])
+        if parsed.get("limit") is not None:
+            updates["quota_limit"] = int(parsed["limit"])
+
+        # Derive pct-based quota_used estimate when only pct is available.
+        if parsed.get("pct") is not None and parsed.get("used") is None:
+            existing_limit = updates.get("quota_limit") or row["quota_limit"]
+            if existing_limit:
+                updates["quota_used"] = int(float(parsed["pct"]) * int(existing_limit))
+
+        # Handle exhausted=True: force quota_used to quota_limit.
+        if parsed.get("exhausted"):
+            limit_val = updates.get("quota_limit") or row["quota_limit"]
+            if limit_val:
+                updates["quota_used"] = int(limit_val)
+            else:
+                # No limit known — store a sentinel large enough to exceed QUOTA_PREEMPT_PCT.
+                updates["quota_used"] = 9999
+                updates["quota_limit"] = 9999
+
+        # Apply reset_at from parsed signal (authoritative when present).
+        if parsed.get("reset_at"):
+            updates["quota_reset_at"] = parsed["reset_at"]
+        elif "quota_reset_at" not in updates:
+            # Ensure reset_at is set if it was missing.
+            existing_reset = _parse_dt(row["quota_reset_at"])
+            if existing_reset is None or now >= existing_reset:
+                updates["quota_reset_at"] = (now + window_delta).isoformat()
+
+        if not updates:
+            return
+
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        values = list(updates.values()) + [cred_id]
+        await db.execute(
+            f"UPDATE provider_credentials SET {set_clause} WHERE id = ?",
+            values,
+        )
+        await db.commit()
+        logger.debug(
+            "record_cli_usage: cred_id=%s updates=%s",
+            cred_id, {k: updates[k] for k in updates},
+        )
+    except Exception:
+        logger.exception("record_cli_usage failed for provider_db_id=%s", provider_db_id)
 
 
 async def get_quota_state(

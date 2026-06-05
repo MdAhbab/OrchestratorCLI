@@ -219,6 +219,31 @@ async def terminal_socket(
                     )
             except Exception:
                 logger.debug("division status update skipped", exc_info=True)
+
+            # Q-1: parse usage signal from the terminal buffer and record it.
+            try:
+                from backend.services import cli_usage as _cli_usage
+                from backend.services import quota_service as _quota_service
+
+                snapshot = session.buffer_snapshot()
+                parsed = _cli_usage.parse_usage_from_text(snapshot)
+                if parsed is not None:
+                    exit_user_id = await get_current_user_id()
+                    await _quota_service.record_cli_usage(
+                        db,
+                        provider_db_id=session.provider_id,
+                        user_id=exit_user_id,
+                        parsed=parsed,
+                    )
+                    logger.debug(
+                        "PTY exit: recorded CLI usage for provider_id=%s pct=%s exhausted=%s",
+                        session.provider_id,
+                        parsed.get("pct"),
+                        parsed.get("exhausted"),
+                    )
+            except Exception:
+                # Never break terminal teardown due to usage recording.
+                logger.debug("CLI usage recording skipped on PTY exit", exc_info=True)
         pending = _pending_sends.pop(conn_key, set())
         for task in pending:
             task.cancel()

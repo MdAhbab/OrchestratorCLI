@@ -4,7 +4,7 @@ import { Download, Apple, Terminal, Github, ShieldAlert } from "lucide-react";
 // ─── Release config ──────────────────────────────────────────────────────────
 // Update RELEASE_VERSION when cutting a new release; asset filenames must match
 // the artifactName patterns in desktop/package.json.
-const RELEASE_VERSION = "0.8.1";
+const RELEASE_VERSION = "0.9.1";
 const RELEASES_BASE = `https://github.com/MdAhbab/IBMbob/releases/download/v${RELEASE_VERSION}`;
 
 // Asset names must match the `artifactName` patterns in desktop/package.json.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -102,13 +103,19 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const totalSteps = 6;
   const progress = Math.min(1, (step + 1) / totalSteps);
 
+  const isDesktop = Boolean(window.ibbobDesktop?.isDesktop);
+
   const pickFolder = async () => {
+    const prevPath = folderPath;
     const selectWorkspaceFolder = window.electronAPI?.selectWorkspaceFolder;
     if (selectWorkspaceFolder) {
       const desktopPath = await selectWorkspaceFolder();
       if (desktopPath) {
         setFolderPath(desktopPath);
         setPickedFolderName("");
+      } else {
+        // User canceled native picker — keep previous value
+        if (prevPath) toast.info("Workspace unchanged.");
       }
       return;
     }
@@ -352,6 +359,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                   pickFolder={pickFolder}
                   pickedFolderName={pickedFolderName}
                   recentFolders={recentFolders}
+                  isDesktop={isDesktop}
                   onBack={() => setStep(0)}
                   onNext={() => setStep(2)}
                 />
@@ -483,6 +491,7 @@ function StepWorkspace({
   pickFolder,
   pickedFolderName,
   recentFolders,
+  isDesktop,
   onBack,
   onNext,
 }: {
@@ -491,12 +500,15 @@ function StepWorkspace({
   pickFolder: () => void;
   pickedFolderName: string;
   recentFolders: string[];
+  isDesktop: boolean;
   onBack: () => void;
   onNext: () => void;
 }) {
   const [isValidating, setIsValidating] = useState(false);
   const [pathValid, setPathValid] = useState<boolean | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // Manual-validate button state (for browser mode or manual entry)
+  const [manualValidating, setManualValidating] = useState(false);
 
   const looksLikeFullPath = (value: string) =>
     /^(~[\\/]|~$|[a-zA-Z]:[\\/]|\\\\|\/)/.test(value.trim());
@@ -541,6 +553,38 @@ function StepWorkspace({
     return () => clearTimeout(delayDebounceFn);
   }, [folderPath]);
 
+  const handleManualValidate = async () => {
+    const trimmed = folderPath.trim();
+    if (!trimmed) return;
+    setManualValidating(true);
+    try {
+      const res = await apiFetch(
+        `/workspace/validate-path?path=${encodeURIComponent(trimmed)}`,
+        { timeoutMs: 10_000 },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPathValid(!!data.valid);
+        setValidationError(data.error || null);
+        if (data.valid) {
+          toast.success("Workspace path is valid.");
+        } else {
+          toast.error(data.error || "Invalid path.");
+        }
+      } else {
+        setPathValid(false);
+        setValidationError("Failed to communicate with validation service.");
+        toast.error("Validation service error.");
+      }
+    } catch {
+      setPathValid(false);
+      setValidationError("Validation service offline.");
+      toast.error("Validation service offline.");
+    } finally {
+      setManualValidating(false);
+    }
+  };
+
   return (
     <div className="px-8 py-10">
       <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-indigo-500">
@@ -556,31 +600,34 @@ function StepWorkspace({
         context.
       </p>
 
-      <button
-        onClick={pickFolder}
-        className="mt-6 flex w-full items-center gap-3 rounded-xl border border-dashed border-zinc-300/80 bg-zinc-50/40 px-4 py-5 transition hover:border-indigo-400 hover:bg-indigo-50/30 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-indigo-400/50 dark:hover:bg-indigo-400/[0.05]"
-      >
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-zinc-900">
-          <FolderOpen className="h-4 w-4 text-indigo-500" />
-        </div>
-        <div className="flex-1 text-left">
-          <div className="text-[13px] text-zinc-900 dark:text-white">
-            {folderPath
-              ? folderPath
-              : pickedFolderName
-              ? `Selected: ${pickedFolderName}`
-              : "Choose folder…"}
+      {/* Desktop: show native folder picker button */}
+      {isDesktop && (
+        <button
+          onClick={pickFolder}
+          className="mt-6 flex w-full items-center gap-3 rounded-xl border border-dashed border-zinc-300/80 bg-zinc-50/40 px-4 py-5 transition hover:border-indigo-400 hover:bg-indigo-50/30 dark:border-white/10 dark:bg-white/[0.02] dark:hover:border-indigo-400/50 dark:hover:bg-indigo-400/[0.05]"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm dark:bg-zinc-900">
+            <FolderOpen className="h-4 w-4 text-indigo-500" />
           </div>
-          <div className="font-mono text-[10px] text-zinc-500">
-            {folderPath
-              ? "ready"
-              : pickedFolderName
-              ? "paste the full path below"
-              : "click to open native picker"}
+          <div className="flex-1 text-left">
+            <div className="text-[13px] text-zinc-900 dark:text-white">
+              {folderPath
+                ? folderPath
+                : pickedFolderName
+                ? `Selected: ${pickedFolderName}`
+                : "Choose folder…"}
+            </div>
+            <div className="font-mono text-[10px] text-zinc-500">
+              {folderPath
+                ? "ready"
+                : pickedFolderName
+                ? "paste the full path below"
+                : "click to open native picker"}
+            </div>
           </div>
-        </div>
-        {folderPath && pathValid === true && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-      </button>
+          {folderPath && pathValid === true && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+        </button>
+      )}
 
       <div className="mt-4">
         <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
@@ -612,23 +659,35 @@ function StepWorkspace({
 
       <div className="mt-4">
         <label className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
-          or type a path
+          {isDesktop ? "or type a path" : "Workspace path"}
         </label>
-        <input
-          value={folderPath}
-          onChange={(e) => {
-            setFolderPath(e.target.value);
-          }}
-          placeholder="~/projects/your-app"
-          className="mt-1.5 w-full rounded-lg border border-zinc-200/70 bg-white px-3 py-2 font-mono text-[12px] text-zinc-800 outline-none focus:border-indigo-400 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
-        />
-        {isValidating && (
+        <div className="mt-1.5 flex items-center gap-2">
+          <input
+            value={folderPath}
+            onChange={(e) => {
+              setFolderPath(e.target.value);
+            }}
+            placeholder="~/projects/your-app"
+            className="flex-1 rounded-lg border border-zinc-200/70 bg-white px-3 py-2 font-mono text-[12px] text-zinc-800 outline-none focus:border-indigo-400 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
+          />
+          <button
+            type="button"
+            onClick={() => void handleManualValidate()}
+            disabled={!folderPath.trim() || manualValidating}
+            className="shrink-0 rounded-lg border border-zinc-200/70 bg-white px-3 py-2 text-[12px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200 dark:hover:bg-white/[0.05]"
+          >
+            {manualValidating ? "Checking…" : "Validate"}
+          </button>
+        </div>
+        {isValidating && !manualValidating && (
           <p className="mt-1 font-mono text-[10px] text-indigo-500 animate-pulse">Validating workspace path...</p>
         )}
-        {!isValidating && pathValid === true && (
-          <p className="mt-1 font-mono text-[10px] text-emerald-500">✓ Valid workspace folder path</p>
+        {!isValidating && !manualValidating && pathValid === true && (
+          <p className="mt-1 font-mono text-[10px] text-emerald-500">
+            Active workspace: {folderPath.trim()}
+          </p>
         )}
-        {!isValidating && pathValid === false && (
+        {!isValidating && !manualValidating && pathValid === false && (
           <p className="mt-1 font-mono text-[10px] text-rose-500">
             ✗ Invalid path: {validationError || "Directory parent does not exist or path format is incorrect."}
           </p>

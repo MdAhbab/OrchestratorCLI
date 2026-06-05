@@ -1,0 +1,29 @@
+{
+  "_comment": "Central orchestrator AI credentials + fallback order (CK-1). API keys are NEVER stored here in plaintext for production — set them via env vars referenced by 'api_key_env' or via Settings (encrypted at rest). This file defines WHICH services the central AI may use and in WHAT fallback order. The orchestrator's ProviderRouter consumes 'fallback_order'.",
+  "version": "1.0.0",
+  "fallback_order": ["grok", "gemini-api", "deepseek-api"],
+  "allow_cross_provider_fallback": true,
+  "providers": {
+    "grok": {
+      "display_name": "xAI Grok",
+      "api_key_env": "GROK_API_KEY",
+      "default_model": "grok-3",
+      "base_url": "https://api.x.ai/v1",
+      "enabled": true
+    },
+    "gemini-api": {
+      "display_name": "Google Gemini API",
+      "api_key_env": "GEMINI_API_KEY",
+      "default_model": "gemini-2.0-flash",
+      "base_url": "https://generativelanguage.googleapis.com",
+      "enabled": true
+    },
+    "deepseek-api": {
+      "display_name": "DeepSeek API",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "default_model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com",
+      "enabled": true
+    }
+  }
+}

@@ -110,6 +110,190 @@ def _register_builtin_tools(registry: MCPToolRegistry) -> None:
     )
 
 
+def _register_cli_tools(registry: MCPToolRegistry) -> None:
+    """Register cli.* MCP tools that let the central AI drive worker CLIs.
+
+    Each handler is a thin async wrapper around the synchronous functions in
+    backend.services.tools.cli_tools (Part C of ORCHESTRATOR_V0.9.md).
+    """
+    import asyncio
+    from backend.services.tools import cli_tools
+
+    async def _run(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.run_task(
+                slug=str(args.get("agent", "")),
+                prompt=str(args.get("prompt", "")),
+                model=args.get("model"),
+                mode=str(args.get("mode", "auto")),
+                owns_files=args.get("owns_files"),
+            ),
+        )
+
+    async def _set_model(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.set_model(
+                slug=str(args.get("agent", "")),
+                model=str(args.get("model", "")),
+            ),
+        )
+
+    async def _set_mode(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.set_mode(
+                slug=str(args.get("agent", "")),
+                mode=str(args.get("mode", "auto")),
+            ),
+        )
+
+    async def _get_usage(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.get_usage(slug=str(args.get("agent", ""))),
+        )
+
+    async def _login(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.login(slug=str(args.get("agent", ""))),
+        )
+
+    async def _stop(args: Dict[str, Any]) -> Any:
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: cli_tools.stop(slug=str(args.get("agent", ""))),
+        )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.run_task",
+            description=(
+                "Run a task on a worker CLI (claude-code, gemini-cli, codex-cli, "
+                "copilot-cli). Builds the concrete non-interactive command from "
+                "cli_commands.json and writes it to the agent's live PTY."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["agent", "prompt"],
+                "properties": {
+                    "agent":      {"type": "string", "description": "CLI slug, e.g. 'claude-code'"},
+                    "prompt":     {"type": "string", "description": "Task description / instruction"},
+                    "model":      {"type": "string", "description": "Optional model override"},
+                    "mode":       {
+                        "type": "string",
+                        "enum": ["auto", "yolo", "interactive"],
+                        "default": "auto",
+                        "description": "Permission mode (prefer 'auto'; 'yolo' requires user opt-in)",
+                    },
+                    "owns_files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "File paths this agent is allowed to edit (MU-5 scope)",
+                    },
+                },
+            },
+            handler=_run,
+        )
+    )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.set_model",
+            description="Switch the active model on a worker CLI's PTY session.",
+            input_schema={
+                "type": "object",
+                "required": ["agent", "model"],
+                "properties": {
+                    "agent": {"type": "string"},
+                    "model": {"type": "string", "description": "Model identifier"},
+                },
+            },
+            handler=_set_model,
+        )
+    )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.set_mode",
+            description=(
+                "Set the approval/permission mode on a worker CLI. "
+                "'auto' = safe auto-approve edits; 'yolo' = full bypass (user must opt-in); "
+                "'interactive' = no change (human in the loop)."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["agent", "mode"],
+                "properties": {
+                    "agent": {"type": "string"},
+                    "mode":  {
+                        "type": "string",
+                        "enum": ["auto", "yolo", "interactive"],
+                    },
+                },
+            },
+            handler=_set_mode,
+        )
+    )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.get_usage",
+            description=(
+                "Dispatch the usage-query command to a worker CLI's PTY. "
+                "The result must be parsed from the PTY output stream (see cli_usage.py). "
+                "Returns dispatch status; parsed {used, limit, pct, reset_at} available via Q-1."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["agent"],
+                "properties": {
+                    "agent": {"type": "string"},
+                },
+            },
+            handler=_get_usage,
+        )
+    )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.login",
+            description=(
+                "Write the CLI's login command into its PTY so the user can complete "
+                "the interactive auth flow (OAuth / device-code / browser)."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["agent"],
+                "properties": {
+                    "agent": {"type": "string"},
+                },
+            },
+            handler=_login,
+        )
+    )
+
+    registry.register(
+        MCPToolDescriptor(
+            name="cli.stop",
+            description=(
+                "Send a graceful interrupt (Ctrl-C) to a worker CLI's PTY. "
+                "Used by the pre-emption monitor (Q-3) to stop an in-flight task."
+            ),
+            input_schema={
+                "type": "object",
+                "required": ["agent"],
+                "properties": {
+                    "agent": {"type": "string"},
+                },
+            },
+            handler=_stop,
+        )
+    )
+
+
 _registry: Optional[MCPToolRegistry] = None
 
 
@@ -118,4 +302,5 @@ def get_mcp_registry() -> MCPToolRegistry:
     if _registry is None:
         _registry = MCPToolRegistry()
         _register_builtin_tools(_registry)
+        _register_cli_tools(_registry)
     return _registry
