@@ -5,18 +5,17 @@ import { Download, Apple, Terminal, ShieldAlert } from "lucide-react";
 const RELEASE_VERSION = "0.9.1";
 
 // Per-OS installer downloads. Windows + macOS are live; Linux is coming soon.
-// These MUST be DIRECT-download links so the file saves immediately instead of
-// opening a Drive folder. Convert a Google Drive share link to the direct form:
-//   share:  https://drive.google.com/file/d/<FILE_ID>/view
-//   direct: https://drive.google.com/uc?export=download&id=<FILE_ID>
+// Direct-download assets published on the project's GitHub Release — these download
+// the installer immediately (the page shows no GitHub link; this is only the href).
+// Asset names must match the `artifactName` patterns in desktop/package.json:
+//   win: AI-Orchestrator-Setup-${version}.exe   mac: AI-Orchestrator-${version}-arm64.dmg
+// To publish: create a GitHub Release tagged v${RELEASE_VERSION} and upload the .exe/.dmg.
 type Build = { status: "available"; url: string } | { status: "coming_soon" };
 
+const RELEASES_BASE = `https://github.com/MdAhbab/IBMbob/releases/download/v${RELEASE_VERSION}`;
 const DOWNLOADS: Record<"Windows" | "macOS" | "Linux", Build> = {
-  // TEMPORARY: these point at the Drive folder (opens the folder, not a direct
-  // download). Replace each with the DIRECT link of the .exe / .dmg using the
-  // uc?export=download&id=<FILE_ID> form above so the file downloads immediately.
-  Windows: { status: "available", url: "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing" },
-  macOS:   { status: "available", url: "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing" },
+  Windows: { status: "available", url: `${RELEASES_BASE}/AI-Orchestrator-Setup-${RELEASE_VERSION}.exe` },
+  macOS:   { status: "available", url: `${RELEASES_BASE}/AI-Orchestrator-${RELEASE_VERSION}-arm64.dmg` },
   Linux:   { status: "coming_soon" },
 };
 
