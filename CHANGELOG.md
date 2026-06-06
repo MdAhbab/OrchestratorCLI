@@ -5,6 +5,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.9.1] — 2026-06-06
+
+### Added
+- **Benchmark-informed routing** — the orchestrator now routes tasks using real per-CLI benchmark data (SWE-bench / Terminal-Bench / specialties) from `backend/services/orchestrator/cli_benchmarks.json`. The system prompt carries a capability table, the offline split orders by capability, and quota hand-offs pick the strongest eligible CLI (frontend→Gemini, backend→Codex, architecture/hard-bugs→Claude).
+- **Quota-aware pre-emptive CLI hand-off** — worker-CLI usage is parsed from terminal output (`cli_usage.py`); when a CLI passes the pre-empt threshold (90%) the orchestrator reroutes the task **before** exhaustion and queues it on an alternate CLI (`task_queue` table + `orchestrator/handoff.py`).
+- **CLI tool layer** — uniform MCP tools (`cli.run_task / set_model / set_mode / get_usage / login / stop`) let the central AI drive each CLI via a per-CLI verb map (`cli_commands.json`), with shell-quoting and a destructive-command deny-list.
+- **Self-contained, ad-hoc-signed macOS arm64 DMG** — bundles a relocatable Python with all backend deps and the SQL migrations, so it runs with **no system Python and no first-launch network**. A free `codesign -s -` hook (`desktop/scripts/afterPack.js`) avoids the "app is damaged" block — no paid Developer ID required.
+- **Desktop bridge** `window.ibbobDesktop` exposed (fixes desktop detection); per-CLI quota bars (`QuotaBar`) in Processes.
+- **`central_ai.json`** — orchestrator multi-provider keys + fallback order (seeder wiring tracked for a later release).
+
+### Changed
+- **Workspace setup** is now robust in both desktop and browser (text-input + Validate fallback, keep-prior-value on cancel, active-workspace indicator).
+- **Downloader / `orchestrator.ahbab.dev`** — direct download links; **all GitHub links removed**; unsigned-build notice reworded for macOS + Windows; the live `/demo` route is preserved; deploy guide added for the custom domain (`public/CNAME`).
+- **Version bumped to 0.9.1** across backend, frontend, desktop, packaging, and downloader.
+
+### Fixed
+- **GitHub Copilot CLI definition** — corrected the npm package to `@github/copilot` and the binary to `copilot` (was the outdated `@github/copilot-cli` / `github-copilot-cli`), so install/verify/run actually work.
+- **Cline CLI** — corrected the npm package to `cline` (was `@cline/cli`).
+- **Worker-CLI usage parsing** — recognizes real phrasings ("95% of your daily limit", "429", "resets at HH:MM") so pre-emption fires.
+- **Packaged migrations** — `migrations/` is now bundled so `init_db.apply_sql_migrations()` finds and applies them in the installed app.
+
+### Removed
+- `AI CLI Research and Benchmarking.md` — research source distilled into `cli_benchmarks.json`.
+- `ORCHESTRATOR_V0.9.md` — internal audit/plan, no longer needed (work shipped).
+
+---
+
 ## [0.8.1] — 2026-06-05
 
 ### Added

@@ -1,5 +1,6 @@
 {
   "name": "ibm-bob",
+  "version": "0.9.1",
   "private": true,
   "description": "AI Orchestrator - multi-agent platform",
   "scripts": {

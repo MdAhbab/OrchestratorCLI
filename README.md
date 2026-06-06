@@ -603,12 +603,13 @@ Sensitive data (API keys, credentials) is encrypted using the `ENCRYPTION_KEY`. 
 
 ---
 
-## Audits
+## Changelog & Roadmap
 
-Security and architecture audit reports for this repository:
+See [CHANGELOG.md](CHANGELOG.md) for release history. **Current release: v0.9.1.**
 
-- [composer_report.md](composer_report.md) — Composer audit (installer, docs, API gaps, frontend wiring)
-- [gemini_report.md](gemini_report.md) — Gemini audit
+Tracked for a future release: the full "orchestrator reviews each CLI's completed log" loop, hard
+file-ownership enforcement in the CLI tool layer, the `central_ai.json` startup seeder, and expanding
+the installer to additional benchmarked CLIs (Aider, Qwen, Kimi, Antigravity, Goose).
 
 ---
 
@@ -641,17 +642,19 @@ Contributions are welcome! Please follow these guidelines:
 
 ## 📝 Changelog
 
-### Version 1.0.0 (Current)
-- Initial release
-- Multi-provider AI integration
-- Runtime management system
-- Session and workspace management
-- WebSocket support for real-time execution
-- Comprehensive API documentation
-- Modern React frontend with TypeScript
+### Version 0.9.1 (Current)
+- Benchmark-informed task routing across multiple AI CLIs
+- Quota-aware pre-emptive CLI hand-off with task queue
+- Uniform CLI tool layer (MCP `cli.*` tools) driving Claude Code, Gemini, Codex, Copilot
+- Self-contained, ad-hoc-signed macOS arm64 installer (no system Python required)
+- Real OS terminals (PowerShell / cmd / zsh / bash) per agent
+- Encrypted local credential storage; user-controlled git operations
+- Modern React + TypeScript frontend; FastAPI backend
+
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ---
 
 **Built with ❤️ for developers who use multiple AI CLI tools**
 
-Last Updated: 2026-05-17
+Last Updated: 2026-06-06

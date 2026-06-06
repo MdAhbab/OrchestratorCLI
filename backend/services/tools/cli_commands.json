@@ -30,14 +30,14 @@
     "resume": "codex resume"
   },
   "copilot-cli": {
-    "run":    "github-copilot-cli -p {prompt} --allow-all-tools",
+    "run":    "copilot -p {prompt} --allow-all-tools",
     "model":  "--model {model}",
     "auto":   "--allow-all-tools",
     "yolo":   "--allow-all",
     "usage":  "/usage",
-    "login":  "github-copilot-cli",
+    "login":  "copilot",
     "stop":   "",
-    "resume": "github-copilot-cli --continue"
+    "resume": "copilot --continue"
   },
   "_default": {
     "run":    "{bin} -p {prompt}",
