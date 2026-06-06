@@ -542,6 +542,17 @@ function GeneralPanel() {
   );
 }
 
+// Where to obtain an API key for each provider (shown inline next to the key field).
+const KEY_HELP: Record<string, { url: string; label: string }> = {
+  grok: { url: "https://console.x.ai/", label: "console.x.ai → API Keys" },
+  gemini: { url: "https://aistudio.google.com/apikey", label: "aistudio.google.com → Get API key" },
+  deepseek: { url: "https://platform.deepseek.com/api_keys", label: "platform.deepseek.com → API keys" },
+  claude: { url: "https://console.anthropic.com/settings/keys", label: "console.anthropic.com → API keys" },
+  codex: { url: "https://platform.openai.com/api-keys", label: "platform.openai.com → API keys" },
+  kimi: { url: "https://platform.moonshot.ai/console/api-keys", label: "platform.moonshot.ai → API keys" },
+  cline: { url: "https://console.anthropic.com/settings/keys", label: "BYOK — paste any Anthropic/OpenAI key" },
+};
+
 function ProvidersPanel() {
   const { providers, setProviders } = useStore();
   return (
@@ -834,6 +845,16 @@ function ProviderRow({ p, onChange }: { p: Provider; onChange: (p: Provider) => 
                   {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
+              {KEY_HELP[p.id] && (
+                <a
+                  href={KEY_HELP[p.id].url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1.5 inline-flex items-center gap-1 text-[10.5px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Get an API key: {KEY_HELP[p.id].label} ↗
+                </a>
+              )}
             </div>
           ))}
           {!credLoading && <CliInstallHint providerId={p.id} />}
@@ -951,6 +972,18 @@ function OrchestratorPanel() {
   return (
     <>
       <SectionTitle title="Orchestrator" sub="Central intelligence layer — plans tasks and routes work to your CLI agents." />
+      <div className="mb-4 rounded-xl border border-violet-300/30 bg-violet-50/60 px-4 py-3 text-[12px] leading-relaxed text-zinc-700 dark:border-violet-400/20 dark:bg-violet-400/[0.06] dark:text-zinc-300">
+        <div className="mb-1 font-medium text-zinc-900 dark:text-white">Set up your orchestrator API key</div>
+        The orchestrator needs at least one API key to plan and route work. Grab a key from any provider
+        below, then paste it in the <span className="font-medium">Providers</span> tab → <span className="font-medium">Save</span>:
+        <ul className="mt-1.5 list-disc space-y-0.5 pl-4">
+          <li><b>Grok (xAI)</b> — <a className="underline" href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">console.x.ai</a> → API Keys</li>
+          <li><b>Gemini (Google)</b> — <a className="underline" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com</a> → Get API key</li>
+          <li><b>DeepSeek</b> — <a className="underline" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer">platform.deepseek.com</a> → API keys</li>
+        </ul>
+        Keys are encrypted and stored only on your machine. With more than one configured, the orchestrator
+        falls back automatically if a provider is unavailable or out of quota.
+      </div>
       <div className="rounded-xl border border-zinc-200/70 bg-white/60 px-4 dark:border-white/[0.06] dark:bg-zinc-950/40">
         <Row title="Orchestrator model" desc="LLM used for decomposition and routing (Grok, Gemini, or DeepSeek)">
           <div className="w-full sm:w-[240px]">

@@ -4,14 +4,20 @@ import { Download, Apple, Terminal, ShieldAlert } from "lucide-react";
 // ─── Release config ──────────────────────────────────────────────────────────
 const RELEASE_VERSION = "0.9.1";
 
-// Direct download links. Currently a Google Drive folder holding the macOS (.dmg)
-// and Windows (.exe) installers. To link a single file directly, use the Drive
-// direct-download form: https://drive.google.com/uc?export=download&id=<FILE_ID>
-const DRIVE_DOWNLOAD = "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing";
-const DOWNLOAD_LINKS: Record<string, string> = {
-  Windows: DRIVE_DOWNLOAD,
-  macOS:   DRIVE_DOWNLOAD,
-  Linux:   DRIVE_DOWNLOAD,
+// Per-OS installer downloads. Windows + macOS are live; Linux is coming soon.
+// These MUST be DIRECT-download links so the file saves immediately instead of
+// opening a Drive folder. Convert a Google Drive share link to the direct form:
+//   share:  https://drive.google.com/file/d/<FILE_ID>/view
+//   direct: https://drive.google.com/uc?export=download&id=<FILE_ID>
+type Build = { status: "available"; url: string } | { status: "coming_soon" };
+
+const DOWNLOADS: Record<"Windows" | "macOS" | "Linux", Build> = {
+  // TEMPORARY: these point at the Drive folder (opens the folder, not a direct
+  // download). Replace each with the DIRECT link of the .exe / .dmg using the
+  // uc?export=download&id=<FILE_ID> form above so the file downloads immediately.
+  Windows: { status: "available", url: "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing" },
+  macOS:   { status: "available", url: "https://drive.google.com/drive/folders/1AJTGFYTia7V6eyrli1h_DwC00YGs0w5D?usp=sharing" },
+  Linux:   { status: "coming_soon" },
 };
 
 // ─── OS detection ────────────────────────────────────────────────────────────
@@ -29,9 +35,9 @@ export function DownloadCTA() {
   const detectedOS = detectOS();
 
   const platforms = [
-    { name: "Windows", icon: Download, sub: "Windows 10 · 11 · x64" },
-    { name: "macOS",   icon: Apple,    sub: "Apple Silicon · Intel" },
-    { name: "Linux",   icon: Terminal, sub: "AppImage · amd64" },
+    { name: "Windows" as const, icon: Download, sub: "Windows 10 · 11 · x64" },
+    { name: "macOS" as const,   icon: Apple,    sub: "Apple Silicon · Intel" },
+    { name: "Linux" as const,   icon: Terminal, sub: "Coming soon" },
   ];
 
   return (
@@ -88,27 +94,29 @@ export function DownloadCTA() {
             {/* Platform downloads */}
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
               {platforms.map((p, i) => {
-                const isDetected = detectedOS === p.name;
-                return (
-                  <motion.a
-                    key={p.name}
-                    href={DOWNLOAD_LINKS[p.name]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: 0.1 + i * 0.08 }}
-                    className={[
-                      "group relative flex items-center gap-3 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-left cursor-pointer",
-                      isDetected
-                        ? "border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/40 hover:bg-violet-500/15"
-                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20",
-                    ].join(" ")}
-                  >
+                const build = DOWNLOADS[p.name];
+                const comingSoon = build.status === "coming_soon";
+                const isDetected = detectedOS === p.name && !comingSoon;
+
+                const baseClass = [
+                  "group relative flex items-center gap-3 px-4 py-3.5 rounded-xl border backdrop-blur-md transition-all text-left",
+                  comingSoon
+                    ? "border-white/10 bg-white/[0.02] opacity-60 cursor-not-allowed"
+                    : isDetected
+                      ? "border-violet-500/60 bg-violet-500/10 ring-1 ring-violet-500/40 hover:bg-violet-500/15 cursor-pointer"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 cursor-pointer",
+                ].join(" ");
+
+                const inner = (
+                  <>
                     {isDetected && (
                       <span className="absolute -top-2.5 left-3 px-2 py-0.5 rounded-full bg-violet-500 text-white text-[10px] font-semibold tracking-wide uppercase">
                         Recommended
+                      </span>
+                    )}
+                    {comingSoon && (
+                      <span className="absolute -top-2.5 left-3 px-2 py-0.5 rounded-full border border-white/15 bg-white/10 text-neutral-300 text-[10px] font-semibold tracking-wide uppercase">
+                        Coming soon
                       </span>
                     )}
                     <div className={[
@@ -121,13 +129,38 @@ export function DownloadCTA() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-white text-base" style={{ fontWeight: 500 }}>
-                        Download for {p.name}
+                        {comingSoon ? p.name : `Download for ${p.name}`}
                       </div>
-                      <div className="text-sm text-neutral-500 truncate">
-                        {p.sub}
-                      </div>
+                      <div className="text-sm text-neutral-500 truncate">{p.sub}</div>
                     </div>
-                    <Download className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" />
+                    {!comingSoon && (
+                      <Download className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors" />
+                    )}
+                  </>
+                );
+
+                const anim = {
+                  initial: { opacity: 0, y: 20 },
+                  whileInView: { opacity: 1, y: 0 },
+                  viewport: { once: true },
+                  transition: { duration: 0.5, delay: 0.1 + i * 0.08 },
+                };
+
+                return comingSoon ? (
+                  <motion.div key={p.name} {...anim} aria-disabled="true" className={baseClass}>
+                    {inner}
+                  </motion.div>
+                ) : (
+                  <motion.a
+                    key={p.name}
+                    href={build.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    {...anim}
+                    className={baseClass}
+                  >
+                    {inner}
                   </motion.a>
                 );
               })}
