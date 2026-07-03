@@ -1,23 +1,30 @@
-import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { Loader } from "./components/Loader";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { ChatView, INITIAL_MSGS, type Division, type Msg } from "./components/ChatView";
-import { ProcessesView } from "./components/ProcessesView";
 import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import { ThemeProvider } from "./components/theme";
 import { StoreProvider, useStore } from "./components/store";
-import { Onboarding } from "./components/Onboarding";
-import { Settings } from "./components/Settings";
 import { CommandPalette } from "./components/CommandPalette";
 import { GlobalChatBar } from "./components/GlobalChatBar";
-import { TerminalFullscreen } from "./components/TerminalFullscreen";
 import { type CliRuntime } from "./components/TerminalCard";
 import { type CtxFile } from "./components/ContextDropzone";
-import { apiFetch, apiPath, healthCheckUrl, isAbortError, readSseJsonStream } from "./lib/api";
+import { apiFetch, healthCheckUrl, isAbortError, readSseJsonStream } from "./lib/api";
+import { usePolling } from "./lib/usePolling";
 import { routingStrategyToBackend } from "./lib/orchestratorConfig";
 import { parseApiError } from "./lib/apiErrors";
 import {
@@ -32,6 +39,21 @@ import {
   saveLastSessionId,
   SESSIONS_CHANGED,
 } from "./lib/sessionsBus";
+
+// Heavy views are split out of the initial bundle: Settings/Onboarding are
+// large one-off screens and ProcessesView/TerminalFullscreen pull in xterm.
+const ProcessesView = lazy(() =>
+  import("./components/ProcessesView").then((m) => ({ default: m.ProcessesView })),
+);
+const Settings = lazy(() =>
+  import("./components/Settings").then((m) => ({ default: m.Settings })),
+);
+const Onboarding = lazy(() =>
+  import("./components/Onboarding").then((m) => ({ default: m.Onboarding })),
+);
+const TerminalFullscreen = lazy(() =>
+  import("./components/TerminalFullscreen").then((m) => ({ default: m.TerminalFullscreen })),
+);
 
 type View = "chat" | "processes" | "settings";
 
@@ -440,31 +462,43 @@ function Shell() {
     }
   };
 
-  const handleReroute = async (msg: Msg) => {
-    if (!msg.divisions?.length) return;
-    const strategy = routingStrategyToBackend(orchestrator.routingStrategy);
-    for (const div of msg.divisions) {
-      try {
-        await apiFetch("/orchestrator/dispatch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            task: div.task,
-            session_id: activeSessionId,
-            routing_strategy: strategy,
-          }),
-        });
-        void trackAnalyticsEvent("command_executed", {
-          sessionId: activeSessionId,
-          metadata: { division: div.short, strategy },
-        });
-      } catch (err) {
-        console.warn("Re-route dispatch failed:", err);
+  const handleReroute = useCallback(
+    async (msg: Msg) => {
+      if (!msg.divisions?.length) return;
+      const strategy = routingStrategyToBackend(orchestrator.routingStrategy);
+      for (const div of msg.divisions) {
+        try {
+          await apiFetch("/orchestrator/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              task: div.task,
+              session_id: activeSessionId,
+              routing_strategy: strategy,
+            }),
+          });
+          void trackAnalyticsEvent("command_executed", {
+            sessionId: activeSessionId,
+            metadata: { division: div.short, strategy },
+          });
+        } catch (err) {
+          console.warn("Re-route dispatch failed:", err);
+        }
       }
-    }
-    setClis((prev) => applyDivisionsToAgents(prev, msg.divisions!));
+      setClis((prev) => applyDivisionsToAgents(prev, msg.divisions!));
+      setView("processes");
+    },
+    [orchestrator.routingStrategy, activeSessionId],
+  );
+
+  const handleOpenProcesses = useCallback((divisions?: Division[]) => {
+    const first = divisions?.[0]?.short;
+    if (first) setHighlightAgentId(first.toLowerCase());
     setView("processes");
-  };
+    requestAnimationFrame(() => {
+      processesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -555,21 +589,19 @@ function Shell() {
 
   // Load the providers the user enabled during onboarding from the backend,
   // then build CliRuntime[] for the Parallel Terminals page.
-  useEffect(() => {
-    if (!onboarded) return;
-    let cancelled = false;
-    const load = async () => {
+  usePolling(
+    async (signal) => {
       try {
-        const provRes = await apiFetch("/providers?enabled_only=true");
-        const activeRes = await apiFetch("/runtimes/live").catch((err) => {
-          console.warn("Failed to load live runtimes:", err);
+        const provRes = await apiFetch("/providers?enabled_only=true", { signal });
+        const activeRes = await apiFetch("/runtimes/live", { signal }).catch((err) => {
+          if (!isAbortError(err)) console.warn("Failed to load live runtimes:", err);
           return null;
         });
-        const usageRes = await apiFetch("/analytics/usage?days=1").catch((err) => {
-          console.warn("Failed to load usage analytics:", err);
+        const usageRes = await apiFetch("/analytics/usage?days=1", { signal }).catch((err) => {
+          if (!isAbortError(err)) console.warn("Failed to load usage analytics:", err);
           return null;
         });
-        if (cancelled) return;
+        if (signal.aborted) return;
         if (!provRes.ok) {
           setProviderDegraded(true);
           return;
@@ -624,8 +656,8 @@ function Shell() {
               cap,
             };
           });
-        setClis((prev) =>
-          next.map((cli) => {
+        setClis((prev) => {
+          const merged = next.map((cli) => {
             const existing = prev.find((c) => c.id === cli.id);
             if (!existing?.task) return cli;
             return {
@@ -633,22 +665,20 @@ function Shell() {
               task: existing.task,
               state: cli.runtimeId || existing.state === "executing" ? "executing" : cli.state,
             };
-          })
-        );
+          });
+          // Keep the previous array identity when nothing changed so the
+          // 15s poll doesn't re-render every terminal card for no reason.
+          return JSON.stringify(merged) === JSON.stringify(prev) ? prev : merged;
+        });
       } catch (err) {
+        if (isAbortError(err)) return;
         console.error("Failed to load enabled providers:", err);
-        if (!cancelled) setProviderDegraded(true);
+        setProviderDegraded(true);
       }
-    };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 15000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [onboarded]);
+    },
+    15000,
+    onboarded,
+  );
 
   const loadSharedContext = async () => {
     try {
@@ -672,7 +702,9 @@ function Shell() {
   if (backendHydrated && !loading && !onboarded) {
     return (
       <div className="relative h-screen w-full overflow-hidden bg-[#fafafa] font-sans text-zinc-900 antialiased dark:bg-[#070709] dark:text-zinc-100">
-        <Onboarding onDone={() => setOnboarded(true)} />
+        <Suspense fallback={null}>
+          <Onboarding onDone={() => setOnboarded(true)} />
+        </Suspense>
       </div>
     );
   }
@@ -747,20 +779,15 @@ function Shell() {
                   transition={{ duration: 0.25 }}
                   className="absolute inset-0"
                 >
-                  <ChatView
-                    msgs={msgs}
-                    onSuggest={(t) => send(t)}
-                    onOpenProcesses={(divisions) => {
-                      const first = divisions?.[0]?.short;
-                      if (first) setHighlightAgentId(first.toLowerCase());
-                      setView("processes");
-                      requestAnimationFrame(() => {
-                        processesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      });
-                    }}
-                    onReroute={handleReroute}
-                    enabledAgentIds={enabledAgentIds}
-                  />
+                  <ViewErrorBoundary label="chat">
+                    <ChatView
+                      msgs={msgs}
+                      onSuggest={(t) => send(t)}
+                      onOpenProcesses={handleOpenProcesses}
+                      onReroute={handleReroute}
+                      enabledAgentIds={enabledAgentIds}
+                    />
+                  </ViewErrorBoundary>
                 </motion.div>
               )}
               {view === "processes" && (
@@ -772,6 +799,8 @@ function Shell() {
                   transition={{ duration: 0.25 }}
                   className="absolute inset-0"
                 >
+                  <ViewErrorBoundary label="processes">
+                  <Suspense fallback={null}>
                   <ProcessesView
                     ref={processesRef}
                     clis={clis}
@@ -791,6 +820,8 @@ function Shell() {
                       )
                     }
                   />
+                  </Suspense>
+                  </ViewErrorBoundary>
                 </motion.div>
               )}
               {view === "settings" && (
@@ -802,7 +833,11 @@ function Shell() {
                   transition={{ duration: 0.25 }}
                   className="absolute inset-0"
                 >
-                  <Settings onClose={() => setView("chat")} clis={clis} />
+                  <ViewErrorBoundary label="settings">
+                    <Suspense fallback={null}>
+                      <Settings onClose={() => setView("chat")} clis={clis} />
+                    </Suspense>
+                  </ViewErrorBoundary>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -842,6 +877,46 @@ function Shell() {
       />
     </div>
   );
+}
+
+/**
+ * Per-view boundary: a crash inside one view shows a local retry card instead
+ * of unmounting the whole shell (which would drop chat/session state).
+ */
+class ViewErrorBoundary extends Component<
+  { children: ReactNode; label: string },
+  { err: Error | null }
+> {
+  state = { err: null as Error | null };
+  static getDerivedStateFromError(err: Error) {
+    return { err };
+  }
+  componentDidCatch(err: Error) {
+    console.error(`${this.props.label} view crashed:`, err);
+  }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="flex h-full items-center justify-center p-8">
+          <div className="max-w-md rounded-xl border border-rose-300/40 bg-white p-5 text-center shadow-sm dark:border-rose-400/20 dark:bg-zinc-950">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-rose-500">
+              {this.props.label} · render error
+            </div>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-zinc-600 dark:text-zinc-300">
+              This view crashed; the rest of the app is still running.
+            </p>
+            <button
+              onClick={() => this.setState({ err: null })}
+              className="mt-3 rounded-md border border-zinc-200/70 bg-white px-3 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-zinc-200 dark:hover:bg-white/[0.06]"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
@@ -894,7 +969,14 @@ export default function App() {
         <StoreProvider>
           <BrowserRouter>
             <Routes>
-              <Route path="/terminal/:id" element={<TerminalFullscreen />} />
+              <Route
+                path="/terminal/:id"
+                element={
+                  <Suspense fallback={null}>
+                    <TerminalFullscreen />
+                  </Suspense>
+                }
+              />
               <Route path="/*" element={<Shell />} />
             </Routes>
           </BrowserRouter>

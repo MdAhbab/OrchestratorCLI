@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import {
@@ -208,9 +208,20 @@ export function ChatView({
   enabledAgentIds?: Set<string>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevCountRef = useRef(0);
 
+  // Smooth-scroll when a message is added; during token streaming (same count,
+  // growing content) jump instantly, and only if the user is already near the
+  // bottom so scrolling back to read history isn't hijacked.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNewMessage = msgs.length !== prevCountRef.current;
+    prevCountRef.current = msgs.length;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    if (isNewMessage || nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: isNewMessage ? "smooth" : "auto" });
+    }
   }, [msgs]);
 
   return (
@@ -271,7 +282,9 @@ function EmptyState() {
   );
 }
 
-function MessageBubble({
+// Memoized: during token streaming only the streaming row's object identity
+// changes, so earlier bubbles skip re-rendering entirely.
+const MessageBubble = memo(function MessageBubble({
   m,
   onOpenProcesses,
   onReroute,
@@ -357,4 +370,4 @@ function MessageBubble({
       </div>
     </motion.div>
   );
-}
+});

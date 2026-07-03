@@ -46,5 +46,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Stable vendors get their own chunks so app updates don't bust them,
+          // and xterm is shared by the lazy ProcessesView/TerminalFullscreen views.
+          'vendor-react': ['react', 'react-dom', 'react-router'],
+          'vendor-motion': ['motion'],
+          'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit'],
+        },
+      },
+    },
+  },
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

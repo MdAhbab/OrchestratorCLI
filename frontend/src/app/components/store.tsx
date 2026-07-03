@@ -1,4 +1,13 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { apiPath, apiFetch } from "../lib/api";
 import {
@@ -571,6 +580,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [state.prefs.accentColor]);
 
   useEffect(() => {
+    // The UI uses absolute px type styles, so the font-size preference scales
+    // the whole app like an editor zoom level.
+    const zoom = { sm: "0.92", md: "1", lg: "1.08" }[state.prefs.fontSize] ?? "1";
+    document.documentElement.style.setProperty("zoom", zoom);
+  }, [state.prefs.fontSize]);
+
+  useEffect(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       try {
@@ -687,7 +703,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
-  const performSettingsSync = (retryAttempt = 0) => {
+  const performSettingsSync = useCallback(function sync(retryAttempt = 0) {
     if (!stateRef.current.prefs.autoSync) return;
     setSyncState("saving");
     if (settingsRetryTimer.current) window.clearTimeout(settingsRetryTimer.current);
@@ -715,15 +731,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const delay = Math.pow(2, retryAttempt) * 1000;
           settingsRetryCount.current = retryAttempt + 1;
           settingsRetryTimer.current = window.setTimeout(() => {
-            performSettingsSync(retryAttempt + 1);
+            sync(retryAttempt + 1);
           }, delay);
         } else {
           toast.error("Settings sync failed after multiple attempts.");
         }
       });
-  };
+  }, []);
 
-  const performOrchestratorSync = (retryAttempt = 0) => {
+  const performOrchestratorSync = useCallback(function sync(retryAttempt = 0) {
     if (!stateRef.current.prefs.autoSync) return;
     setSyncState("saving");
     if (orchestratorRetryTimer.current) window.clearTimeout(orchestratorRetryTimer.current);
@@ -747,20 +763,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const delay = Math.pow(2, retryAttempt) * 1000;
           orchestratorRetryCount.current = retryAttempt + 1;
           orchestratorRetryTimer.current = window.setTimeout(() => {
-            performOrchestratorSync(retryAttempt + 1);
+            sync(retryAttempt + 1);
           }, delay);
         } else {
           toast.error("Orchestrator config sync failed after multiple attempts.");
         }
       });
-  };
+  }, []);
 
-  const retrySync = () => {
+  const retrySync = useCallback(() => {
     settingsRetryCount.current = 0;
     orchestratorRetryCount.current = 0;
     performSettingsSync(0);
     performOrchestratorSync(0);
-  };
+  }, [performSettingsSync, performOrchestratorSync]);
 
   useEffect(() => {
     if (!backendHydrated) return;
@@ -802,85 +818,92 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [backendHydrated, state.orchestrator, state.prefs.autoSync]);
 
-  return (
-    <StoreCtx.Provider
-      value={{
-        ...state,
-        backendHydrated,
-        syncState,
-        retrySync,
-        setOnboarded: (v) => setState((s) => ({ ...s, onboarded: v })),
-        setWorkspace: (w) => setState((s) => ({ ...s, workspace: w })),
-        setProviders: (u) =>
-          setState((s) => ({
-            ...s,
-            providers: typeof u === "function" ? (u as any)(s.providers) : u,
-          })),
-        setOrchestrator: (u) =>
-          setState((s) => ({
-            ...s,
-            orchestrator: typeof u === "function" ? (u as any)(s.orchestrator) : u,
-          })),
-        setPrefs: (u) =>
-          setState((s) => ({
-            ...s,
-            prefs: typeof u === "function" ? (u as any)(s.prefs) : u,
-          })),
-        createSession: async (title = "New chat") => {
-          try {
-            const res = await apiFetch("/sessions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                user_id: 1,
-                title,
-                session_type: "chat",
-                status: "active",
-              }),
-            });
-            if (!res.ok) return null;
-            const data = await res.json();
-            return typeof data.id === "number" ? data.id : null;
-          } catch {
-            return null;
-          }
-        },
-        clearSessions: async () => {
-          try {
-            const res = await apiFetch("/sessions?confirm=true", { method: "DELETE" });
-            if (!res.ok) {
-              const detail = await res.text().catch(() => "");
-              toast.error(detail ? detail.slice(0, 160) : "Failed to clear sessions.");
-              return false;
-            }
-            return true;
-          } catch (err) {
-            toast.error("Failed to clear sessions — backend unreachable.");
+  // Stable action identities + memoized context value: without this every
+  // StoreProvider render re-renders all useStore consumers.
+  const actions = useMemo(
+    () => ({
+      setOnboarded: (v: boolean) => setState((s) => ({ ...s, onboarded: v })),
+      setWorkspace: (w: Workspace | null) => setState((s) => ({ ...s, workspace: w })),
+      setProviders: ((u) =>
+        setState((s) => ({
+          ...s,
+          providers: typeof u === "function" ? (u as any)(s.providers) : u,
+        }))) as Ctx["setProviders"],
+      setOrchestrator: ((u) =>
+        setState((s) => ({
+          ...s,
+          orchestrator: typeof u === "function" ? (u as any)(s.orchestrator) : u,
+        }))) as Ctx["setOrchestrator"],
+      setPrefs: ((u) =>
+        setState((s) => ({
+          ...s,
+          prefs: typeof u === "function" ? (u as any)(s.prefs) : u,
+        }))) as Ctx["setPrefs"],
+      createSession: async (title = "New chat") => {
+        try {
+          const res = await apiFetch("/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: 1,
+              title,
+              session_type: "chat",
+              status: "active",
+            }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          return typeof data.id === "number" ? data.id : null;
+        } catch {
+          return null;
+        }
+      },
+      clearSessions: async () => {
+        try {
+          const res = await apiFetch("/sessions?confirm=true", { method: "DELETE" });
+          if (!res.ok) {
+            const detail = await res.text().catch(() => "");
+            toast.error(detail ? detail.slice(0, 160) : "Failed to clear sessions.");
             return false;
           }
-        },
-        reset: async () => {
-          try {
-            localStorage.removeItem(KEY);
-          } catch {}
-          const resetState = {
-            ...DEFAULT_STATE,
-            onboarded: false,
-            workspace: null,
-          };
-          setState(resetState);
-          try {
-            await apiFetch("/settings/reset", { method: "POST" });
-          } catch {
-            // Local reset still works; backend will be overwritten on the next successful sync.
-          }
-          window.location.reload();
-        },
-      }}
-    >
-      {children}
-    </StoreCtx.Provider>
+          return true;
+        } catch {
+          toast.error("Failed to clear sessions — backend unreachable.");
+          return false;
+        }
+      },
+      reset: async () => {
+        try {
+          localStorage.removeItem(KEY);
+        } catch {}
+        setState({
+          ...DEFAULT_STATE,
+          onboarded: false,
+          workspace: null,
+        });
+        try {
+          await apiFetch("/settings/reset", { method: "POST" });
+        } catch {
+          // Local reset still works; backend will be overwritten on the next successful sync.
+        }
+        window.location.reload();
+      },
+    }),
+    [],
   );
+
+  const value = useMemo<Ctx>(
+    () => ({
+      ...state,
+      backendHydrated,
+      syncState,
+      retrySync,
+      ...actions,
+    }),
+    [state, backendHydrated, syncState, retrySync, actions],
+  );
+
+  return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }
 
 export function useStore() {
