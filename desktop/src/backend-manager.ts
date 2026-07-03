@@ -264,7 +264,6 @@ export class BackendManager {
       SECRET_KEY:
         process.env.SECRET_KEY || readOrCreateSecret("secret.key"),
       ORCHESTRATOR_USER_DATA: userDataDir,
-      IBMBOB_USER_DATA: userDataDir,
     };
 
     const debugValue = env.DEBUG?.trim().toLowerCase();

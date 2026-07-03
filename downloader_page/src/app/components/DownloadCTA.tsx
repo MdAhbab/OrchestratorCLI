@@ -12,7 +12,7 @@ const RELEASE_VERSION = "0.9.1";
 // To publish: create a GitHub Release tagged v${RELEASE_VERSION} and upload the .exe/.dmg.
 type Build = { status: "available"; url: string } | { status: "coming_soon" };
 
-const RELEASES_BASE = `https://github.com/MdAhbab/IBMbob/releases/download/v${RELEASE_VERSION}`;
+const RELEASES_BASE = `https://github.com/MdAhbab/OrchestratorCLI/releases/download/v${RELEASE_VERSION}`;
 const DOWNLOADS: Record<"Windows" | "macOS" | "Linux", Build> = {
   Windows: { status: "available", url: `${RELEASES_BASE}/AI-Orchestrator-Setup-${RELEASE_VERSION}.exe` },
   macOS:   { status: "available", url: `${RELEASES_BASE}/AI-Orchestrator-${RELEASE_VERSION}-arm64.dmg` },

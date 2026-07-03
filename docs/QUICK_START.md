@@ -20,7 +20,7 @@ Get the **AI Orchestrator** (main app) up and running in minutes.
 
 ```bash
 git clone <repository-url>
-cd IBMbob
+cd OrchestratorCLI
 ```
 
 ### 2. Install dependencies

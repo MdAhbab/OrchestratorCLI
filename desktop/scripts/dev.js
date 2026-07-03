@@ -50,8 +50,8 @@ waitOn({
       cwd: desktopDir,
       env: {
         ...process.env,
-        IBMBOB_DEV: "1",
-        IBMBOB_VITE_URL: "http://127.0.0.1:5173",
+        ORCHESTRATOR_DEV: "1",
+        ORCHESTRATOR_VITE_URL: "http://127.0.0.1:5173",
       },
       stdio: "inherit",
       shell: false,

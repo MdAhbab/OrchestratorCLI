@@ -19,7 +19,7 @@ Production-oriented multi-agent AI orchestration: a central orchestrator (Grok /
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd IBMbob
+cd OrchestratorCLI
 
 # Install backend dependencies
 cd backend
@@ -324,7 +324,7 @@ For complete API documentation, visit http://localhost:8000/docs when the backen
 ## 📁 Project Structure
 
 ```
-IBMbob/
+OrchestratorCLI/
 ├── backend/              # FastAPI backend
 │   ├── api/             # API routes and WebSockets
 │   ├── services/        # Business logic
@@ -530,7 +530,7 @@ pm2 start run.py --interpreter python3 --name ibm-bob
 ```ini
 [program:ibm-bob]
 command=python run.py --no-reload
-directory=/path/to/IBMbob
+directory=/path/to/OrchestratorCLI
 autostart=true
 autorestart=true
 ```

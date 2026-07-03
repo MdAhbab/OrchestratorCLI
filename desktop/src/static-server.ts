@@ -78,8 +78,14 @@ function createStaticServer(distDir: string, backendBaseUrl: string): http.Serve
 
   server.on("upgrade", (req, socket, head) => {
     const url = req.url ?? "";
+    // An unhandled 'error' on the proxy or raw socket would crash the main
+    // process; terminal reconnects while the backend restarts hit this path.
+    socket.on("error", () => socket.destroy());
     if (url.startsWith("/ws")) {
-      proxy.ws(req, socket, head, { target: backendWs });
+      proxy.ws(req, socket, head, { target: backendWs }, (err) => {
+        console.warn(`[ui] ws proxy error: ${err?.message ?? err}`);
+        socket.destroy();
+      });
       return;
     }
     socket.destroy();

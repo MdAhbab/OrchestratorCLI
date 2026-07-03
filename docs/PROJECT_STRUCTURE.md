@@ -49,7 +49,7 @@ Scripts that package the orchestrator into Windows/macOS installers.
 ## Directory structure
 
 ```
-IBMbob/
+OrchestratorCLI/
 │
 ├── backend/                      # Main orchestrator API
 │   ├── main.py                   # FastAPI entry: backend.main:app

@@ -113,7 +113,7 @@ ENCRYPTION_KEY=          # Fernet key for stored provider credentials
 ## Development setup
 
 ```bash
-cd IBMbob
+cd OrchestratorCLI
 python run.py --no-reload
 # Frontend: http://localhost:5173
 # API docs: http://localhost:8000/docs

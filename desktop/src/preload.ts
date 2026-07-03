@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
 // Lightweight desktop-detection bridge (WS-1): lets the renderer reliably tell
 // desktop from browser and branch native features (folder picker, etc.).
-contextBridge.exposeInMainWorld("ibbobDesktop", {
+contextBridge.exposeInMainWorld("orchestratorDesktop", {
   isDesktop: true,
   platform: process.platform,
 });

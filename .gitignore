@@ -58,9 +58,11 @@ dist-ssr/
 .env.*.local
 
 # Session files
-IBMBOB sessions/
 shared/sessions/*.yaml
 !shared/sessions/.gitkeep
+
+# Local runtime storage (SQLite DB, caches, uploads created by a dev server)
+storage/
 
 # Runtime/generated app data
 uploads/*

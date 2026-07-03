@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Performance
+- **Dependency prune** — removed 145 unused npm packages and 45 dead shadcn/ui components; the frontend now depends only on what it imports.
+- **Code-splitting** — Settings, Onboarding, Processes, and the fullscreen terminal load on demand; xterm, React, and motion ship as separately cacheable vendor chunks. Initial JS payload drops from ~1.04 MB to ~450 kB.
+- **Visibility-aware polling** — every dashboard poller pauses while the window is hidden; git status and the session list are fetched once and shared across TopBar/Sidebar/SessionHistory instead of per-panel.
+- **Chat streaming** — only the streaming bubble re-renders per token (memoized messages, stable handlers); auto-scroll jumps instantly during streams and no longer hijacks the scrollback while reading history.
+- **PTY reader backoff** — idle terminal reader threads back off to 250 ms polls instead of waking 50×/s, and snap back on input/output.
+
+### Fixed
+- `POST /agents/a2a/send` crashed with a `NameError` (missing `A2AEnvelope` import).
+- A plan division naming an unknown agent no longer 500s the whole dispatch — the division is skipped and annotated, valid ones still delegate.
+- Division status updates never applied because the updater regex didn't match the `divisions.md` format the writer emits.
+- Quota bars now parse the backend's list response and 0–1 fractions correctly, including the pre-empt tier.
+- Terminal WebSockets reconnected in a loop after every token refresh (single-use token URL was an effect dependency); the fullscreen terminal also doubled keystrokes after reconnect (leaked xterm `onData` handler).
+- Assigned-task commands are quoted for the actual shell — PowerShell vs zsh/bash — so apostrophes survive on macOS/Linux and the fallback echo works everywhere.
+- Killing a terminal now terminates the whole process tree (`taskkill /T` on Windows, process group on POSIX); sessions no client ever attached to tear down after the idle window; concurrent terminals are capped by `max_concurrent_processes` (HTTP 429 when full).
+- Hardened `/workspace/git/run` against argument-level escapes (`--upload-pack`, `--receive-pack`, `--output`, `git config` writes).
+- Storage-summary and clear-cache endpoints no longer block the event loop on large directory walks.
+- Desktop: WebSocket proxy errors no longer crash the main process; quit waits for the backend to stop (no orphaned uvicorn); reopening from the macOS Dock no longer boots a second backend; external links are restricted to http/https/mailto and in-window navigation is locked to the app origin; the auto-updater targets the renamed `MdAhbab/OrchestratorCLI` repository directly.
+
+### Changed
+- Analytics strip shows only real route/latency data (fabricated sparklines removed); the orchestrator graph no longer invents dispatch log lines; voice dictation no longer types a canned demo transcript when speech recognition is unavailable.
+- The Settings font-size preference now actually scales the UI; dropdowns are keyboard-accessible (arrows/Home/End/Escape, ARIA listbox); each main view is isolated behind its own error boundary so one crash can't drop chat state.
+- Remaining legacy branding renamed: desktop bridge is `window.orchestratorDesktop`, dev/env vars are `ORCHESTRATOR_DEV`, `ORCHESTRATOR_VITE_URL`, `ORCHESTRATOR_USER_DATA`, and docs/links point at `MdAhbab/OrchestratorCLI`.
+
+---
+
 ## [0.9.1] — 2026-06-06
 
 ### Added

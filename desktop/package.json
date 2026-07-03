@@ -1,10 +1,10 @@
 {
-  "name": "ibm-bob-desktop",
+  "name": "orchestrator-desktop",
   "version": "0.9.1",
   "description": "AI Orchestrator - native desktop shell",
   "private": true,
   "main": "dist/main.js",
-  "author": "IBMbob",
+  "author": "Md Ahbab",
   "license": "MIT",
   "scripts": {
     "build:main": "tsc -p tsconfig.json",
@@ -36,7 +36,7 @@
   "build": {
     "appId": "com.ibm.bob.orchestrator",
     "productName": "AI Orchestrator",
-    "copyright": "Copyright © IBMbob",
+    "copyright": "Copyright © Md Ahbab",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -164,13 +164,13 @@
       ],
       "category": "Development",
       "artifactName": "AI-Orchestrator-${version}-${arch}.${ext}",
-      "maintainer": "IBMbob",
+      "maintainer": "Md Ahbab",
       "description": "AI CLI Orchestrator for multi-agent coding workflows"
     },
     "publish": {
       "provider": "github",
       "owner": "MdAhbab",
-      "repo": "IBMbob",
+      "repo": "OrchestratorCLI",
       "releaseType": "release"
     }
   }

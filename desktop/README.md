@@ -1,6 +1,6 @@
 # AI Orchestrator Desktop
 
-Native desktop shell for [IBMbob](../README.md) using Electron and electron-builder. It loads the existing React UI, starts the FastAPI backend locally, and removes browser chrome so it feels like a downloaded app rather than a browser tab.
+Native desktop shell for [OrchestratorCLI](../README.md) using Electron and electron-builder. It loads the existing React UI, starts the FastAPI backend locally, and removes browser chrome so it feels like a downloaded app rather than a browser tab.
 
 ## Stack
 
@@ -58,7 +58,7 @@ From the repository root:
 
 ## Development
 
-`npm run desktop:dev` starts Vite at `http://127.0.0.1:5173`, launches Electron with `IBMBOB_DEV=1`, and lets Electron start Uvicorn on `127.0.0.1:8000`.
+`npm run desktop:dev` starts Vite at `http://127.0.0.1:5173`, launches Electron with `ORCHESTRATOR_DEV=1`, and lets Electron start Uvicorn on `127.0.0.1:8000`.
 
 The browser workflow is unchanged: `python run.py` or `cd frontend && npm run dev` still work.
 

@@ -83,7 +83,7 @@ elevated shell or enable Windows Developer Mode.
 
 ## Auto-update
 
-`desktop/src/updater.ts` checks GitHub Releases (`MdAhbab/IBMbob`). Publish
+`desktop/src/updater.ts` checks GitHub Releases (`MdAhbab/OrchestratorCLI`). Publish
 artifacts whose names match the `artifactName` patterns above; macOS auto-update
 requires signed + notarized builds.
 

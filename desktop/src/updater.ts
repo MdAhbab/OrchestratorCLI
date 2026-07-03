@@ -7,6 +7,7 @@ import { BrowserWindow, ipcMain } from "electron";
 import { autoUpdater, UpdateInfo } from "electron-updater";
 
 let mainWindow: BrowserWindow | null = null;
+let initialized = false;
 
 function notify(event: string, payload?: unknown) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -16,6 +17,10 @@ function notify(event: string, payload?: unknown) {
 
 export function setupAutoUpdater(win: BrowserWindow): void {
   mainWindow = win;
+  // Re-activation on macOS creates a new window; only retarget notifications,
+  // don't re-register updater/ipc listeners.
+  if (initialized) return;
+  initialized = true;
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

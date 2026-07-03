@@ -73,8 +73,8 @@ If AI CLIs don't install:
 
 DOCUMENTATION
 -------------
-Full documentation: https://github.com/MdAhbab/IBMbob
-Issues & Support: https://github.com/MdAhbab/IBMbob/issues
+Full documentation: https://github.com/MdAhbab/OrchestratorCLI
+Issues & Support: https://github.com/MdAhbab/OrchestratorCLI/issues
 
 UNINSTALLING
 ------------
