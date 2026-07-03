@@ -15,14 +15,11 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme } from "./theme";
 import { useStore } from "./store";
 import { apiFetch } from "../lib/api";
+import { gitStatusPoller } from "../lib/appPollers";
+import { useSharedPoller } from "../lib/sharedPoller";
+import { usePolling } from "../lib/usePolling";
 
 type View = "chat" | "processes" | "settings";
-
-type GitSnap = {
-  branch?: string | null;
-  files_changed?: number;
-  is_repo?: boolean;
-};
 
 type NotifRow = { id: number; event_type: string; created_at: string; cost_estimate?: number | null };
 
@@ -72,12 +69,13 @@ export function TopBar({
 }) {
   const { theme, toggle } = useTheme();
   const { workspace } = useStore();
-  const [git, setGit] = useState<GitSnap | null>(null);
   const [notifs, setNotifs] = useState<NotifRow[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement | null>(null);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
-  const [backendOffline, setBackendOffline] = useState(false);
+
+  // Git status + offline flag come from the poller shared with the Sidebar.
+  const { snap: git, offline: backendOffline } = useSharedPoller(gitStatusPoller);
 
   // Listen for Electron auto-update events
   useEffect(() => {
@@ -91,35 +89,17 @@ export function TopBar({
     api.onUpdateDownloaded((info) => setUpdateVersion(info.version));
   }, []);
 
-  useEffect(() => {
-    let c = false;
-    const load = async () => {
-      try {
-        const r = await apiFetch("/workspace/git", { timeoutMs: 12_000 });
-        if (r.ok) {
-          if (!c) setGit(await r.json());
-          setBackendOffline(false);
-        } else {
-          setBackendOffline(true);
-        }
-      } catch {
-        setBackendOffline(true);
-      }
-      try {
-        const r2 = await apiFetch("/analytics/events/recent?limit=15", { timeoutMs: 12_000 });
-        if (r2.ok) {
-          if (!c) setNotifs(await r2.json());
-          setBackendOffline(false);
-        }
-      } catch {}
-    };
-    void load();
-    const id = window.setInterval(load, 20000);
-    return () => {
-      c = true;
-      window.clearInterval(id);
-    };
-  }, []);
+  usePolling(async (signal) => {
+    try {
+      const r = await apiFetch("/analytics/events/recent?limit=15", {
+        timeoutMs: 12_000,
+        signal,
+      });
+      if (r.ok && !signal.aborted) setNotifs(await r.json());
+    } catch {
+      /* offline state is derived from the shared git poller */
+    }
+  }, 20000);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -133,7 +113,7 @@ export function TopBar({
 
   const branch = git?.branch || "main";
   const dirty = git?.is_repo && (git.files_changed ?? 0) > 0;
-  const isDesktop = Boolean(window.ibbobDesktop?.isDesktop);
+  const isDesktop = Boolean(window.orchestratorDesktop?.isDesktop);
 
   const handleInstallUpdate = () => {
     const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI as

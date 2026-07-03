@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Activity, Pause, Play, Send, Sparkles, User } from "lucide-react";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import { apiFetch } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 type Route = {
   id: string;
@@ -136,20 +137,23 @@ export function OrchestratorGraph({ activeSessionId }: { activeSessionId?: numbe
 
   // Fetch divisions plan if activeSessionId is present
   useEffect(() => {
-    if (!activeSessionId) {
-      setHasPlan(false);
-      return;
-    }
-    let cancelled = false;
-    const loadPlan = async () => {
+    if (!activeSessionId) setHasPlan(false);
+  }, [activeSessionId]);
+
+  usePolling(
+    async (signal) => {
+      if (!activeSessionId) return;
       try {
-        const res = await apiFetch(`/workspace/artifacts/session/${activeSessionId}/divisions.md`);
+        const res = await apiFetch(
+          `/workspace/artifacts/session/${activeSessionId}/divisions.md`,
+          { signal },
+        );
         if (!res.ok) {
-          if (!cancelled) setHasPlan(false);
+          if (!signal.aborted) setHasPlan(false);
           return;
         }
         const text = await res.text();
-        if (cancelled) return;
+        if (signal.aborted) return;
         const parsed = parseDivisionsMd(text);
         if (parsed.length > 0) {
           setAgents(parsed);
@@ -158,73 +162,55 @@ export function OrchestratorGraph({ activeSessionId }: { activeSessionId?: numbe
           setHasPlan(false);
         }
       } catch {
-        if (!cancelled) setHasPlan(false);
+        if (!signal.aborted) setHasPlan(false);
       }
-    };
-    void loadPlan();
-    const id = setInterval(loadPlan, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [activeSessionId]);
+    },
+    8000,
+    Boolean(activeSessionId),
+    activeSessionId,
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await apiFetch("/analytics/routes?limit=12", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        const rows = Array.isArray(data.routes) ? data.routes : [];
-        if (cancelled) return;
-        if (rows.length === 0) {
-          setRoutes(DEMO_ROUTES);
-          setIsDemo(true);
-          return;
-        }
-        setRoutes(rows.map((row: Record<string, unknown>, i: number) => mapApiRoute(row, i)));
-        setIsDemo(false);
-        setLogs(
-          rows.slice(0, 6).map((row: Record<string, unknown>) => {
-            const ts = String(row.created_at ?? "").slice(11, 19) || "00:00:00";
-            return `[${ts}] route → ${row.provider_name} (${row.routing_strategy})`;
-          }),
-        );
-      } catch {
-        if (!cancelled) {
-          setRoutes(DEMO_ROUTES);
-          setIsDemo(true);
-        }
+  usePolling(async (signal) => {
+    try {
+      const res = await apiFetch("/analytics/routes?limit=12", {
+        cache: "no-store",
+        signal,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const rows = Array.isArray(data.routes) ? data.routes : [];
+      if (signal.aborted) return;
+      if (rows.length === 0) {
+        setRoutes(DEMO_ROUTES);
+        setIsDemo(true);
+        return;
       }
-    };
-    void load();
-    const id = window.setInterval(load, 20000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, []);
+      setRoutes(rows.map((row: Record<string, unknown>, i: number) => mapApiRoute(row, i)));
+      setIsDemo(false);
+      setLogs(
+        rows.slice(0, 6).map((row: Record<string, unknown>) => {
+          const ts = String(row.created_at ?? "").slice(11, 19) || "00:00:00";
+          return `[${ts}] route → ${row.provider_name} (${row.routing_strategy})`;
+        }),
+      );
+    } catch {
+      if (!signal.aborted) {
+        setRoutes(DEMO_ROUTES);
+        setIsDemo(true);
+      }
+    }
+  }, 20000);
 
+  // Cycle the highlighted route for visual context. Log lines only come from
+  // real routing history above — the cycler no longer fabricates dispatch logs.
   useEffect(() => {
     if (!running || routes.length === 0) return;
     const id = setInterval(() => {
-      setActive((a) => {
-        const next = (a + 1) % routes.length;
-        const r = routes[next];
-        const ts = new Date().toISOString().slice(11, 19);
-        setLogs((prev) =>
-          [
-            `[${ts}] route → ${r.target} (${r.type})`,
-            `[${ts}] dispatch "${r.task}"`,
-            ...prev,
-          ].slice(0, 22),
-        );
-        return next;
-      });
-    }, 2000);
+      if (document.hidden) return;
+      setActive((a) => (a + 1) % routes.length);
+    }, 3000);
     return () => clearInterval(id);
-  }, [running, routes]);
+  }, [running, routes.length]);
 
   // Compute layout coordinates for actual plan graph
   const width = 420;

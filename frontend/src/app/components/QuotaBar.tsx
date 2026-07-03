@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 export type QuotaState = {
   used: number;
@@ -10,15 +11,44 @@ export type QuotaState = {
 
 export type QuotaMap = Record<string, QuotaState>;
 
-/** Fetch quota state from GET /orchestrator/quota. Returns an empty map if the endpoint is down or returns no data. */
+type QuotaApiRow = {
+  provider_id?: number;
+  provider_name?: string;
+  display_name?: string;
+  used?: number;
+  limit?: number | null;
+  /** Backend reports a 0–1 fraction. */
+  pct?: number;
+  /** Backend reports ok | warn | exhausted | unlimited. */
+  status?: string;
+};
+
+/**
+ * Fetch quota state from GET /orchestrator/quota and normalize the backend's
+ * list shape (0–1 pct fractions, ok/warn/exhausted/unlimited statuses) into a
+ * slug-keyed map with 0–100 percentages and the UI's preempt tier.
+ */
 export async function fetchQuota(): Promise<QuotaMap> {
   try {
     const res = await apiFetch("/orchestrator/quota", { timeoutMs: 6_000 });
     if (!res.ok) return {};
-    const data = await res.json();
-    // Defensive: backend may return null, empty, or a different shape
-    if (!data || typeof data !== "object") return {};
-    return data as QuotaMap;
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) return {};
+
+    const map: QuotaMap = {};
+    for (const row of data as QuotaApiRow[]) {
+      const slug = row.provider_name;
+      const limit = row.limit ?? 0;
+      if (!slug || !limit || row.status === "unlimited") continue;
+      const pct = Math.min(100, Math.max(0, (row.pct ?? 0) * 100));
+      let status: QuotaState["status"];
+      if (row.status === "exhausted" || pct >= 100) status = "exhausted";
+      else if (pct >= 90) status = "preempt";
+      else if (row.status === "warn" || pct >= 85) status = "warn";
+      else status = "ok";
+      map[slug] = { used: row.used ?? 0, limit, pct, status };
+    }
+    return map;
   } catch {
     return {};
   }
@@ -103,22 +133,14 @@ export function QuotaBar({
 export function useQuota(pollMs = 30_000): QuotaMap {
   const [quota, setQuota] = useState<QuotaMap>({});
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
+  usePolling(
+    async (signal) => {
       const q = await fetchQuota();
-      if (!cancelled) setQuota(q);
-    };
-
-    void load();
-    const id = pollMs > 0 ? window.setInterval(load, pollMs) : null;
-
-    return () => {
-      cancelled = true;
-      if (id !== null) window.clearInterval(id);
-    };
-  }, [pollMs]);
+      if (!signal.aborted) setQuota(q);
+    },
+    pollMs,
+    pollMs > 0,
+  );
 
   return quota;
 }

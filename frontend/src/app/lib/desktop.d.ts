@@ -1,4 +1,4 @@
-export interface IbbobDesktopApi {
+export interface OrchestratorDesktopApi {
   isDesktop: boolean;
   platform: NodeJS.Platform;
 }
@@ -15,7 +15,7 @@ export interface ElectronApi {
 
 declare global {
   interface Window {
-    ibbobDesktop?: IbbobDesktopApi;
+    orchestratorDesktop?: OrchestratorDesktopApi;
     electronAPI?: ElectronApi;
   }
 }

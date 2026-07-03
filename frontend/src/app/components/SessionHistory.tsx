@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import { useStore, type SessionEntry } from "./store";
 import { apiFetch } from "../lib/api";
-import { SESSIONS_CHANGED } from "../lib/sessionsBus";
-import { fetchSessionEntries } from "../lib/loadSessions";
+import { sessionsPoller } from "../lib/appPollers";
+import { useSharedPoller } from "../lib/sharedPoller";
 
 const fmtDate = (t: number) => {
   const d = new Date(t);
@@ -35,13 +35,6 @@ const fmtDuration = (s: SessionEntry) => {
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 };
-
-function mapSessionStatus(raw: string): SessionEntry["status"] {
-  if (raw === "completed") return "completed";
-  if (raw === "paused") return "paused";
-  if (raw === "archived") return "archived";
-  return "active";
-}
 
 const StatusBadge = ({ s }: { s: SessionEntry["status"] }) => {
   const map = {
@@ -74,38 +67,15 @@ const StatusBadge = ({ s }: { s: SessionEntry["status"] }) => {
 
 export function SessionHistory() {
   const { clearSessions } = useStore();
-  const [sessions, setSessions] = useState<SessionEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [q, setQ] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, { summary: string; artifacts: string[] }>>(
     {},
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const mapped = await fetchSessionEntries(50);
-        setSessions(mapped);
-      } catch (err) {
-        console.warn("SessionHistory load failed", err);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    };
-    void load();
-    const id = window.setInterval(load, 20000);
-    const onRefresh = () => void load();
-    window.addEventListener(SESSIONS_CHANGED, onRefresh);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-      window.removeEventListener(SESSIONS_CHANGED, onRefresh);
-    };
-  }, []);
+  const remoteSessions = useSharedPoller(sessionsPoller);
+  const sessions = remoteSessions ?? [];
+  const isLoading = remoteSessions === null;
 
   const loadDetails = async (sessionId: string) => {
     if (details[sessionId]) return;
@@ -188,7 +158,7 @@ export function SessionHistory() {
           onClick={() => {
             if (confirm("Clear all session history?")) {
               void clearSessions().then((ok) => {
-                if (ok) setSessions([]);
+                if (ok) sessionsPoller.refresh();
               });
             }
           }}

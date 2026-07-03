@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FileText, Download, User, Folder } from "lucide-react";
 import { apiFetch, apiPath } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 type ArtifactFile = {
   name: string;
@@ -23,32 +24,30 @@ export function ArtifactsPanel({ activeSessionId }: { activeSessionId?: number |
   const [artifactDir, setArtifactDir] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
+  usePolling(
+    async (signal) => {
       if (!activeSessionId) {
         setLoading(false);
         return;
       }
       try {
-        const res = await apiFetch(`/workspace/artifacts/session/${activeSessionId}`);
+        const res = await apiFetch(`/workspace/artifacts/session/${activeSessionId}`, { signal });
         if (!res.ok) return;
         const data: ArtifactsResponse = await res.json();
-        if (!cancelled && data.exists) {
+        if (!signal.aborted && data.exists) {
           setArtifacts(data.files ?? []);
           setArtifactDir(data.artifact_dir ?? null);
         }
+      } catch {
+        /* backend unreachable — keep last known artifacts */
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
-    };
-    void load();
-    const id = window.setInterval(load, 8000); // Poll every 8s
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [activeSessionId]);
+    },
+    10_000,
+    true,
+    activeSessionId,
+  );
 
   if (loading) {
     return <p className="text-[11px] text-zinc-500">Loading artifacts…</p>;

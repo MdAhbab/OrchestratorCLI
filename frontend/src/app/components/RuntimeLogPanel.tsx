@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 type RuntimeRow = {
   id: number;
@@ -29,18 +30,19 @@ export function RuntimeLogPanel({ runtimeId }: { runtimeId?: number }) {
       }
     };
     void load();
+    return () => {
+      cancelled = true;
+    };
   }, [selected]);
 
-  useEffect(() => {
-    if (selected == null) return;
-    let cancelled = false;
-    const load = async () => {
-      if (document.hidden) return;
+  usePolling(
+    async (signal) => {
+      if (selected == null) return;
       try {
-        const res = await apiFetch(`/runtimes/${selected}`);
+        const res = await apiFetch(`/runtimes/${selected}`, { signal });
         if (!res.ok) return;
         const data = await res.json();
-        if (cancelled) return;
+        if (signal.aborted) return;
         const lines = (data.logs ?? []).map(
           (l: { content?: string; log_type?: string }) =>
             `[${l.log_type ?? "log"}] ${l.content ?? ""}`,
@@ -49,14 +51,11 @@ export function RuntimeLogPanel({ runtimeId }: { runtimeId?: number }) {
       } catch {
         /* ignore */
       }
-    };
-    void load();
-    const id = window.setInterval(load, 10000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [selected]);
+    },
+    10000,
+    selected != null,
+    selected,
+  );
 
   return (
     <div className="space-y-2">

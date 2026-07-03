@@ -62,7 +62,12 @@ export const ProcessesView = forwardRef<
   return (
     <div ref={ref} className="h-full min-h-0 overflow-y-auto pb-44 sm:pb-48">
       <div className="mx-auto max-w-[1400px] space-y-3 p-3 sm:p-5">
-        <AnalyticsStrip totalUsed={totalUsed} totalCap={totalCap} activeAgents={activeRuntimes} />
+        <AnalyticsStrip
+          totalUsed={totalUsed}
+          totalCap={totalCap}
+          activeAgents={activeRuntimes}
+          totalAgents={clis.length}
+        />
 
         <Section
           title="Orchestrator"

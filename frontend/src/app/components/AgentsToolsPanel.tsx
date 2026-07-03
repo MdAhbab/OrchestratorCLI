@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "../lib/api";
+import { usePolling } from "../lib/usePolling";
 
 type AgentRow = {
   agent_id: string;
@@ -18,29 +19,20 @@ export function AgentsToolsPanel() {
   const [tools, setTools] = useState<ToolRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [aRes, tRes] = await Promise.all([
-          apiFetch("/agents?limit=20"),
-          apiFetch("/tools/mcp"),
-        ]);
-        if (cancelled) return;
-        if (aRes.ok) setAgents(await aRes.json());
-        if (tRes.ok) setTools(await tRes.json());
-        setErr(null);
-      } catch (e) {
-        if (!cancelled) setErr(String(e));
-      }
-    };
-    void load();
-    const id = window.setInterval(load, 20000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, []);
+  usePolling(async (signal) => {
+    try {
+      const [aRes, tRes] = await Promise.all([
+        apiFetch("/agents?limit=20", { signal }),
+        apiFetch("/tools/mcp", { signal }),
+      ]);
+      if (signal.aborted) return;
+      if (aRes.ok) setAgents(await aRes.json());
+      if (tRes.ok) setTools(await tRes.json());
+      setErr(null);
+    } catch (e) {
+      if (!signal.aborted) setErr(String(e));
+    }
+  }, 20000);
 
   return (
     <div className="grid gap-3 md:grid-cols-2">

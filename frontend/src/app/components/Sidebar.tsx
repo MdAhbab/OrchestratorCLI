@@ -15,16 +15,11 @@ import {
 } from "lucide-react";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import { useStore, type Status, type SessionEntry } from "./store";
-import { apiFetch, apiPath, healthCheckUrl } from "../lib/api";
-import { fetchSessionEntries } from "../lib/loadSessions";
-import { SESSIONS_CHANGED } from "../lib/sessionsBus";
+import { apiFetch, healthCheckUrl } from "../lib/api";
+import { gitStatusPoller, sessionsPoller } from "../lib/appPollers";
+import { useSharedPoller } from "../lib/sharedPoller";
+import { usePolling } from "../lib/usePolling";
 
-function mapSessionStatus(raw: string): SessionEntry["status"] {
-  if (raw === "completed") return "completed";
-  if (raw === "paused") return "paused";
-  if (raw === "archived") return "archived";
-  return "active";
-}
 const STATUS_MAP: Record<Status, { dot: string; label: string; text: string }> = {
   online: { dot: "bg-emerald-500", label: "online", text: "text-emerald-600 dark:text-emerald-400" },
   offline: { dot: "bg-zinc-400", label: "offline", text: "text-zinc-500" },
@@ -109,8 +104,6 @@ export function Sidebar({
   const [q, setQ] = useState("");
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [backendLatencyMs, setBackendLatencyMs] = useState<number | null>(null);
-  const [remoteSessions, setRemoteSessions] = useState<SessionEntry[]>([]);
-  const [git, setGit] = useState<any>(null);
   const [gitCmd, setGitCmd] = useState("");
   const [gitOutput, setGitOutput] = useState<string>("");
 
@@ -124,52 +117,10 @@ export function Sidebar({
     "checkout",
   ]);
 
-  // Fetch real sessions from backend
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const mapped = await fetchSessionEntries(20);
-        setRemoteSessions(mapped);
-      } catch (err) {
-        console.warn("sessions load failed", err);
-      }
-    };
-    void load();
-    const id = window.setInterval(load, 15000);
-    const onRefresh = () => void load();
-    window.addEventListener(SESSIONS_CHANGED, onRefresh);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-      window.removeEventListener(SESSIONS_CHANGED, onRefresh);
-    };
-  }, []);
-
-  // Fetch real git status
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        if (!backendHealthy) {
-          if (!cancelled) setGit(null);
-          return;
-        }
-        const r = await apiFetch("/workspace/git", { timeoutMs: 12_000 });
-        if (!r.ok) return;
-        const j = await r.json();
-        if (!cancelled) setGit(j);
-      } catch {
-        if (!cancelled) setGit(null);
-      }
-    };
-    void load();
-    const id = window.setInterval(load, 20000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [backendHealthy]);
+  // Session list + git status come from pollers shared with TopBar/SessionHistory.
+  const remoteSessions = useSharedPoller(sessionsPoller);
+  const gitStatus = useSharedPoller(gitStatusPoller);
+  const git: any = backendHealthy ? gitStatus.snap : null;
 
   const runGit = async () => {
     if (!gitCmd.trim()) return;
@@ -201,7 +152,7 @@ export function Sidebar({
     }
   };
 
-  const sessions = remoteSessions;
+  const sessions = remoteSessions ?? [];
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1024px)");
@@ -211,43 +162,27 @@ export function Sidebar({
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const checkBackendHealth = async () => {
-      const startedAt = performance.now();
-      try {
-        const response = await apiFetch(healthCheckUrl(), {
-          cache: "no-store",
-          timeoutMs: 8000,
-        });
-        if (!response.ok) {
-          throw new Error(`Health check failed with status ${response.status}`);
-        }
-        await response.json();
-
-        if (!cancelled) {
-          setBackendHealthy(true);
-          setBackendLatencyMs(Math.max(1, Math.round(performance.now() - startedAt)));
-        }
-      } catch {
-        if (!cancelled) {
-          setBackendHealthy(false);
-          setBackendLatencyMs(null);
-        }
+  usePolling(async (signal) => {
+    const startedAt = performance.now();
+    try {
+      const response = await apiFetch(healthCheckUrl(), {
+        cache: "no-store",
+        timeoutMs: 8000,
+        signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Health check failed with status ${response.status}`);
       }
-    };
-
-    void checkBackendHealth();
-    const intervalId = window.setInterval(() => {
-      void checkBackendHealth();
-    }, 15000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+      await response.json();
+      setBackendHealthy(true);
+      setBackendLatencyMs(Math.max(1, Math.round(performance.now() - startedAt)));
+    } catch {
+      if (!signal.aborted) {
+        setBackendHealthy(false);
+        setBackendLatencyMs(null);
+      }
+    }
+  }, 15000);
 
   const filtered = sessions.filter((s) =>
     s.prompt.toLowerCase().includes(q.toLowerCase())
