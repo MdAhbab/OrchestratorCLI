@@ -315,7 +315,7 @@ function formatBytes(bytes: number): string {
 function GeneralPanel() {
   const { workspace, setWorkspace, prefs, setPrefs } = useStore();
   const { theme, toggle } = useTheme();
-  const isDesktop = Boolean(window.ibbobDesktop?.isDesktop);
+  const isDesktop = Boolean(window.orchestratorDesktop?.isDesktop);
 
   // WS-2: workspace state for the inline editor
   const [editingPath, setEditingPath] = useState(workspace?.path || "");
@@ -1665,7 +1665,7 @@ function AboutPanel() {
         </div>
         <div className="mt-4 flex gap-2">
           <a
-            href="https://github.com/MdAhbab/IBMbob"
+            href="https://github.com/MdAhbab/OrchestratorCLI"
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
@@ -1673,7 +1673,7 @@ function AboutPanel() {
             GitHub
           </a>
           <a
-            href="https://github.com/MdAhbab/IBMbob/blob/main/CHANGELOG.md"
+            href="https://github.com/MdAhbab/OrchestratorCLI/blob/main/CHANGELOG.md"
             target="_blank"
             rel="noopener noreferrer"
             className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[11px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"

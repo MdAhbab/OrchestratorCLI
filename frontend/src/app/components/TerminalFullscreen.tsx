@@ -123,9 +123,14 @@ export function TerminalFullscreen() {
       }
     };
 
+    // The terminal instance outlives this effect; dispose the input hook on
+    // cleanup or every reconnect would stack another handler (doubled keys).
+    let onDataDisposable: { dispose: () => void } | null = null;
+
     ws.onopen = () => {
       setStatus("open");
-      termRef.current?.onData(onDataHandler);
+      onDataDisposable?.dispose();
+      onDataDisposable = termRef.current?.onData(onDataHandler) ?? null;
     };
 
     ws.onmessage = (ev) => {
@@ -145,6 +150,10 @@ export function TerminalFullscreen() {
     ws.onclose = () => setStatus("closed");
 
     return () => {
+      try {
+        onDataDisposable?.dispose();
+      } catch {}
+      onDataDisposable = null;
       try {
         ws.close();
       } catch {}

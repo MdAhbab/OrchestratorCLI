@@ -36,24 +36,8 @@ export function VoiceButton({ onTranscript, onPartial }: Props) {
     const SR =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
-      setRecording(true);
-      const demo = "build a settings page with privacy controls";
-      let i = 0;
-      const id = setInterval(() => {
-        i += 2;
-        const t = demo.slice(0, i);
-        setPartial(t);
-        onPartial?.(t);
-        if (i >= demo.length) {
-          clearInterval(id);
-          setTimeout(() => {
-            setRecording(false);
-            onTranscript(demo);
-            setPartial("");
-          }, 400);
-        }
-      }, 80);
-      recRef.current = { stop: () => clearInterval(id) };
+      setSupported(false);
+      toast.error("Voice dictation is not supported in this environment.");
       return;
     }
 
@@ -178,7 +162,7 @@ export function VoiceButton({ onTranscript, onPartial }: Props) {
             </div>
             <div className="border-t border-zinc-200/70 px-4 py-3 dark:border-white/[0.06]">
               <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                transcript {supported ? "" : "· demo"}
+                transcript
               </div>
               <div className="mt-1 min-h-[24px] text-[13px] text-zinc-900 dark:text-zinc-100">
                 {partial || (

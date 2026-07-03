@@ -67,12 +67,20 @@ const stateMap = {
 
 type WsStatus = "connecting" | "open" | "closed" | "error" | "spawning";
 
-function psQuote(value: string) {
-  return `'${value.replace(/\r?\n/g, " ").replace(/'/g, "''")}'`;
+/**
+ * Quote a value for the spawned shell. PowerShell escapes single quotes by
+ * doubling them; POSIX shells (zsh/bash) need the `'\''` dance — the
+ * PowerShell style silently eats apostrophes there.
+ */
+function shellQuote(value: string, isPowerShell: boolean) {
+  const flat = value.replace(/\r?\n/g, " ");
+  return isPowerShell
+    ? `'${flat.replace(/'/g, "''")}'`
+    : `'${flat.replace(/'/g, `'\\''`)}'`;
 }
 
-function commandForAssignedTask(cli: CliRuntime) {
-  const task = psQuote(cli.task ?? "");
+function commandForAssignedTask(cli: CliRuntime, isPowerShell: boolean) {
+  const task = shellQuote(cli.task ?? "", isPowerShell);
   switch (cli.id) {
     case "claude":
       return `claude -p ${task}\r`;
@@ -88,8 +96,10 @@ function commandForAssignedTask(cli: CliRuntime) {
       return `kimi ${task}\r`;
     case "cline":
       return `cline ${task}\r`;
-    default:
-      return `Write-Host ${psQuote(`[orch] Assigned task: ${cli.task ?? ""}`)}\r`;
+    default: {
+      const note = shellQuote(`[orch] Assigned task: ${cli.task ?? ""}`, isPowerShell);
+      return `${isPowerShell ? "Write-Host" : "echo"} ${note}\r`;
+    }
   }
 }
 
@@ -121,14 +131,16 @@ export function TerminalCard({
   const [connectRequested, setConnectRequested] = useState(!lazyConnect);
   const [runtimeId, setRuntimeId] = useState<number | undefined>(cli.runtimeId);
   const [shellLabel, setShellLabel] = useState<string>(cli.shellLabel ?? "Terminal");
-  const [wsUrl, setWsUrl] = useState<string | undefined>(cli.wsUrl);
+  // Kept in a ref, not state: each attach mints a fresh single-use token URL,
+  // and putting that in effect deps would close/reopen the socket in a loop.
+  const wsUrlRef = useRef<string | undefined>(cli.wsUrl);
   const spawnInProgressRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setRuntimeId(cli.runtimeId);
-    setWsUrl(cli.wsUrl);
+    wsUrlRef.current = cli.wsUrl;
   }, [cli.runtimeId, cli.wsUrl]);
 
 
@@ -223,7 +235,7 @@ export function TerminalCard({
 
     const ensureRuntimeAndConnect = async () => {
       let rid = runtimeId ?? cli.runtimeId;
-      let currentWsUrl = wsUrl ?? cli.wsUrl;
+      let currentWsUrl = wsUrlRef.current ?? cli.wsUrl;
       try {
         if (rid == null) {
           if (spawnInProgressRef.current) {
@@ -254,7 +266,7 @@ export function TerminalCard({
           if (data.shell_label) setShellLabel(data.shell_label as string);
           if (cancelled) return;
           setRuntimeId(rid);
-          setWsUrl(currentWsUrl);
+          wsUrlRef.current = currentWsUrl;
           onRuntime?.(cli.providerId, rid);
         }
       } catch (e) {
@@ -285,7 +297,7 @@ export function TerminalCard({
           const refreshed = (await refreshRes.json()) as { ws_url?: string };
           if (refreshed.ws_url) {
             currentWsUrl = refreshed.ws_url;
-            if (!cancelled) setWsUrl(currentWsUrl);
+            if (!cancelled) wsUrlRef.current = currentWsUrl;
           }
         }
       } catch (e) {
@@ -392,7 +404,7 @@ export function TerminalCard({
       } catch {}
       wsRef.current = null;
     };
-  }, [cli.providerId, cli.runtimeId, connectRequested, runtimeId, wsUrl, lazyConnect, spawnAllowed]);
+  }, [cli.providerId, cli.runtimeId, connectRequested, runtimeId, lazyConnect, spawnAllowed]);
 
   const sendInput = (text: string) => {
     const ws = wsRef.current;
@@ -406,7 +418,14 @@ export function TerminalCard({
     if (!force && assignedTaskSentRef.current === task) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     assignedTaskSentRef.current = task;
-    const command = commandForAssignedTask(cli);
+    const label = shellLabel.toLowerCase();
+    const isPowerShell =
+      label.includes("powershell") ||
+      // Before the spawn response names the shell, fall back to the platform.
+      (label === "terminal" &&
+        (window.orchestratorDesktop?.platform === "win32" ||
+          navigator.userAgent.toLowerCase().includes("windows")));
+    const command = commandForAssignedTask(cli, isPowerShell);
     termRef.current?.writeln(`\r\n\x1b[36m[orch] dispatching assigned task to ${cli.name}\x1b[0m`);
     sendInput(command);
   };
@@ -488,7 +507,7 @@ export function TerminalCard({
     }
   };
 
-  const handleAskBob = () => {
+  const handleAskOrchestrator = () => {
     const ws = wsRef.current;
     const q = askPrompt.trim();
     if (!ws || ws.readyState !== WebSocket.OPEN || !q) return;
@@ -713,14 +732,14 @@ export function TerminalCard({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleAskBob();
+                    handleAskOrchestrator();
                   }
                 }}
-                placeholder="ask Granite anything about this terminal…"
+                placeholder="ask the orchestrator about this terminal…"
                 className="flex-1 rounded bg-black/40 px-2 py-1 font-mono text-[11px] text-indigo-100 outline-none placeholder:text-indigo-300/40"
               />
               <button
-                onClick={handleAskBob}
+                onClick={handleAskOrchestrator}
                 className="rounded bg-indigo-500/30 px-2 py-1 text-[11px] text-indigo-200 hover:bg-indigo-500/50"
               >
                 Ask

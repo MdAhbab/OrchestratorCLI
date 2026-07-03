@@ -103,7 +103,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const totalSteps = 6;
   const progress = Math.min(1, (step + 1) / totalSteps);
 
-  const isDesktop = Boolean(window.ibbobDesktop?.isDesktop);
+  const isDesktop = Boolean(window.orchestratorDesktop?.isDesktop);
 
   const pickFolder = async () => {
     const prevPath = folderPath;
