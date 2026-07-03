@@ -22,7 +22,7 @@ from backend.api.dependencies import (
     get_db, get_current_user_id, verify_runtime_exists,
     fetch_active_workspace_path,
 )
-from backend.services.pty_service import pty_manager, PTY_AVAILABLE
+from backend.services.pty_service import pty_manager, PtyLimitError, PTY_AVAILABLE
 from backend.config import settings as app_settings
 from backend.utils.paths import normalize_workspace_path
 
@@ -325,6 +325,13 @@ async def spawn_runtime(
             500,
             "Failed to spawn PTY: Windows terminal backend timed out",
         ) from e
+    except PtyLimitError as e:
+        await db.execute(
+            "UPDATE cli_runtimes SET status='failed', completed_at=? WHERE id=?",
+            (utc_now().isoformat(), runtime_id),
+        )
+        await db.commit()
+        raise HTTPException(429, str(e)) from e
     except Exception as e:
         await db.execute(
             "UPDATE cli_runtimes SET status='failed', completed_at=? WHERE id=?",

@@ -247,9 +247,15 @@ async def _delegate_divisions_to_agents(
         # Exact slug match only (A-MED-02: exact slug required, fuzzy matching removed to prevent misrouting).
         row = all_agents.get(slug)
         if not row:
-            msg = f"No enabled agent provider matches exact slug: {slug!r} (available: {list(all_agents.keys())})"
-            logger.error("_delegate_divisions_to_agents: %s", msg)
-            raise ValueError(msg)
+            # Planner LLMs occasionally invent agent names; skip that division
+            # instead of failing the whole dispatch and dropping valid ones.
+            logger.error(
+                "_delegate_divisions_to_agents: no enabled agent provider matches "
+                "exact slug %r (available: %s) — skipping division.",
+                slug, list(all_agents.keys()),
+            )
+            div["delegation_error"] = "unknown_agent"
+            continue
 
         provider_db_id = int(row["id"])
         qstate = quota_states.get(provider_db_id, {"status": "unlimited"})
@@ -746,11 +752,14 @@ async def update_division_status_for_provider(
 
     # A-HIGH-01: locked read-modify-write prevents concurrent status-update races.
     def _modifier(text: str) -> str:
+        # Must mirror the format emitted by write_divisions_markdown:
+        #   - **Agent ID**: `slug`
+        #   - **Status**: queued
         pattern = re.compile(
-            rf"(##[^\n]+\n(?:.*?\n)*?- Short id: {re.escape(slug)}\s*\n- Status: )\w+",
+            rf"(- \*\*Agent ID\*\*: `{re.escape(slug)}`\s*\n- \*\*Status\*\*: )\w+",
             re.IGNORECASE,
         )
-        return pattern.sub(rf"\1{status}", text, count=1)
+        return pattern.sub(rf"\g<1>{status}", text, count=1)
 
     await _alock.locked_read_modify_write(target_file, _modifier)
 

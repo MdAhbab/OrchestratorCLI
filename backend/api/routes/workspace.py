@@ -261,6 +261,20 @@ _GIT_WRITE = {
     "merge", "rebase", "reset",
 }
 
+# Argument-level escape hatches that turn allowed subcommands into arbitrary
+# command execution or file writes (e.g. `fetch --upload-pack=<cmd>`,
+# `log --output=<path>`, `push --exec=<cmd>`).
+_GIT_ARG_BLOCKLIST = (
+    "--upload-pack", "--receive-pack", "--exec", "--output",
+    "--output-directory", "--open-files-in-pager", "--ext-diff",
+    "--textconv", "--config-env",
+)
+
+# `git config` may only read: writes can plant core.fsmonitor/core.editor
+# hooks that execute on the next git invocation.
+_GIT_CONFIG_READ_FLAGS = {"--get", "--get-all", "--get-regexp", "--list", "-l"}
+_GIT_CONFIG_BLOCKED = {"--file", "-f", "--blob", "--edit", "-e", "--global", "--system"}
+
 
 @router.post("/git/run", response_model=GitCommandResponse)
 async def workspace_git_run(
@@ -292,6 +306,19 @@ async def workspace_git_run(
             400,
             f"git subcommand '{subcmd}' is not in the allowed list",
         )
+
+    for arg in parts[1:]:
+        low = arg.lower()
+        if any(low == blocked or low.startswith(blocked + "=") for blocked in _GIT_ARG_BLOCKLIST):
+            raise HTTPException(400, f"git argument '{arg}' is not allowed")
+
+    if subcmd == "config":
+        flags = {p for p in parts[1:] if p.startswith("-")}
+        if flags & _GIT_CONFIG_BLOCKED or not (flags & _GIT_CONFIG_READ_FLAGS):
+            raise HTTPException(
+                400,
+                "only read-only git config is allowed (--get/--get-all/--get-regexp/--list)",
+            )
 
     # Require confirmation for write operations (safety guard)
     confirm_action = confirm or getattr(payload, "confirm", False)

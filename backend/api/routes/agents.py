@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 import aiosqlite
 
 from backend.api.dependencies import get_db, get_current_user_id
-from backend.services.agents.a2a import get_a2a_bus
+from backend.services.agents.a2a import A2AEnvelope, get_a2a_bus
 from backend.services.agents.registry import AgentDescriptor, AgentStatus, get_agent_registry
 from backend.services.orchestrator.core import OrchestratorEngine
 from backend.services.pty_service import pty_manager

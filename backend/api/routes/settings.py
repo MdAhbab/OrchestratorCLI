@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from datetime import datetime
 from pydantic import BaseModel
 import aiosqlite
+import asyncio
 import json
 import shutil
 from pathlib import Path
@@ -339,7 +340,8 @@ async def get_storage_summary(
     user_id: int = Depends(get_current_user_id),
 ) -> StorageResponse:
     """Return local generated storage locations and sizes."""
-    return _storage_response()
+    # Directory walks can take seconds on large caches; keep the loop free.
+    return await asyncio.to_thread(_storage_response)
 
 
 @router.post("/storage/clear-cache", response_model=ClearCacheResponse)
@@ -354,19 +356,23 @@ async def clear_generated_cache(
             detail="Confirmation is required to clear generated cache (set ?confirm=true)",
         )
 
-    cleared_files = 0
-    cleared_bytes = 0
-    for _, (path, clearable) in _managed_storage_dirs().items():
-        if not clearable:
-            continue
-        files, size_bytes = _clear_directory_contents(path)
-        cleared_files += files
-        cleared_bytes += size_bytes
+    def _clear_all() -> Tuple[int, int]:
+        files_total = 0
+        bytes_total = 0
+        for _, (path, clearable) in _managed_storage_dirs().items():
+            if not clearable:
+                continue
+            files, size_bytes = _clear_directory_contents(path)
+            files_total += files
+            bytes_total += size_bytes
+        return files_total, bytes_total
+
+    cleared_files, cleared_bytes = await asyncio.to_thread(_clear_all)
 
     return ClearCacheResponse(
         cleared_files=cleared_files,
         cleared_bytes=cleared_bytes,
-        areas=_storage_response().areas,
+        areas=(await asyncio.to_thread(_storage_response)).areas,
     )
 
 

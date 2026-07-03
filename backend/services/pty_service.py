@@ -23,6 +23,11 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+
+class PtyLimitError(RuntimeError):
+    """Raised when the configured concurrent-terminal cap is reached."""
+
+
 _NativePTY: Any = None
 _PTY_AVAILABLE = False
 _PTY_IMPORT_ERROR: Optional[str] = None
@@ -240,6 +245,12 @@ class PtySession:
         self._idle_timer: Optional[threading.Timer] = None
         self._idle_seconds: float = 300.0  # 5 min — gives user time to reconnect
         self._shell_label: str = _shell_label()
+        # Adaptive reader sleep: fast while output flows, backing off toward
+        # _READ_SLEEP_MAX on quiet terminals so idle sessions don't spin.
+        self._read_sleep: float = self._READ_SLEEP_MIN
+
+    _READ_SLEEP_MIN = 0.02
+    _READ_SLEEP_MAX = 0.25
 
     @property
     def status(self) -> str:
@@ -301,6 +312,12 @@ class PtySession:
             target=self._read_loop, name=f"pty-reader-{self.runtime_id}", daemon=True
         )
         self._reader_thread.start()
+        # M2: if no client ever attaches (e.g. the spawner crashed before
+        # opening the WS), tear the session down after the idle window instead
+        # of leaking the shell process. attach() cancels this timer.
+        with self._lock:
+            if not self._subscribers:
+                self._schedule_idle_teardown()
 
     def _read_loop(self) -> None:
         assert self._pty is not None
@@ -326,9 +343,13 @@ class PtySession:
                             break
                     else:
                         idle_strikes = 0
-                    time.sleep(0.02)
+                    time.sleep(self._read_sleep)
+                    # Back off gradually while quiet; write() resets this so
+                    # keystroke echo stays snappy.
+                    self._read_sleep = min(self._read_sleep * 1.5, self._READ_SLEEP_MAX)
                     continue
                 idle_strikes = 0
+                self._read_sleep = self._READ_SLEEP_MIN
                 if isinstance(chunk, bytes):  # safety
                     try:
                         chunk = chunk.decode("utf-8", errors="replace")
@@ -395,6 +416,7 @@ class PtySession:
         if self._pty is None or not self._pty.isalive():
             return
         try:
+            self._read_sleep = self._READ_SLEEP_MIN
             self._pty.write(data)
         except Exception as e:
             logger.warning(f"pty[{self.runtime_id}] write failed: {e}")
@@ -437,6 +459,7 @@ class PtySession:
 
     def kill(self) -> None:
         self._stopped.set()
+        pid = self._pid
         try:
             if self._pty is not None:
                 # Sending Ctrl+C is friendlier first.
@@ -453,6 +476,28 @@ class PtySession:
             self._pty = None
             if self._status not in ("exited", "failed"):
                 self._status = "killed"
+        # Closing the PTY drops the shell but grandchildren (npm/node spawned
+        # inside it) can survive — terminate the whole tree explicitly.
+        if pid:
+            try:
+                if sys.platform == "win32":
+                    import subprocess
+
+                    subprocess.run(
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True,
+                        timeout=10,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                else:
+                    import signal
+
+                    # The child called setsid(), so its pgid == pid.
+                    os.killpg(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+            except Exception as e:
+                logger.debug(f"pty[{self.runtime_id}] tree kill: {e}")
 
     def is_alive(self) -> bool:
         if self._pty is None:
@@ -545,6 +590,16 @@ class PtyManager:
                 if user_id is not None:
                     existing.user_id = user_id
                 return existing
+            # Enforce the configured process cap; dead sessions are reaped first.
+            from backend.config import settings as _settings
+
+            cap = max(1, int(getattr(_settings, "max_concurrent_processes", 5)))
+            alive = [s for s in self._sessions.values() if s.is_alive()]
+            if len(alive) >= cap:
+                raise PtyLimitError(
+                    f"Concurrent terminal limit reached ({cap}). "
+                    "Stop an existing terminal before starting a new one."
+                )
         session = PtySession(
             runtime_id=runtime_id,
             provider_id=provider_id,
