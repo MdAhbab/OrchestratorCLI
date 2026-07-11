@@ -246,10 +246,25 @@ type Prefs = {
   accentColor: string;
 };
 
+/** Lightweight view of a user-defined CLI (mirrors `lib/customCli.ts::CustomCli`).
+ *  Kept separate from `Provider` because custom CLIs skip the auth/model/cap
+ *  fields that built-in providers require. */
+export type CustomCli = {
+  slug: string;
+  display_name: string;
+  command: string;
+  args_template: string;
+  description: string | null;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 type AppState = {
   onboarded: boolean;
   workspace: Workspace | null;
   providers: Provider[];
+  customClis: CustomCli[];
   orchestrator: OrchestratorCfg;
   prefs: Prefs;
 };
@@ -263,6 +278,7 @@ type Ctx = AppState & {
   setOnboarded: (v: boolean) => void;
   setWorkspace: (w: Workspace | null) => void;
   setProviders: React.Dispatch<React.SetStateAction<Provider[]>>;
+  setCustomClis: React.Dispatch<React.SetStateAction<CustomCli[]>>;
   setOrchestrator: React.Dispatch<React.SetStateAction<OrchestratorCfg>>;
   setPrefs: React.Dispatch<React.SetStateAction<Prefs>>;
   clearSessions: () => Promise<boolean>;
@@ -273,6 +289,94 @@ type Ctx = AppState & {
 const StoreCtx = createContext<Ctx | null>(null);
 
 const KEY = "orch.state.v3";
+const KEY_PREFIX = "orch.state.v3.";
+
+/** Serializable slices that are worth persisting across reloads. */
+type PersistedSlices = Pick<
+  AppState,
+  "onboarded" | "workspace" | "providers" | "customClis" | "orchestrator" | "prefs"
+>;
+
+/** Per-slice storage keys. Editing a single field no longer rewrites the
+ *  entire state blob — it only writes the touched slice. */
+const SLICE_KEYS: { [K in keyof PersistedSlices]: string } = {
+  onboarded: `${KEY_PREFIX}onboarded`,
+  workspace: `${KEY_PREFIX}workspace`,
+  providers: `${KEY_PREFIX}providers`,
+  customClis: `${KEY_PREFIX}customClis`,
+  orchestrator: `${KEY_PREFIX}orchestrator`,
+  prefs: `${KEY_PREFIX}prefs`,
+};
+
+function sliceKey<K extends keyof PersistedSlices>(key: K): string {
+  return SLICE_KEYS[key];
+}
+
+function readSlice<K extends keyof PersistedSlices>(
+  key: K,
+  fallback: PersistedSlices[K],
+): PersistedSlices[K] {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(sliceKey(key));
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeSlice<K extends keyof PersistedSlices>(
+  key: K,
+  value: PersistedSlices[K],
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(sliceKey(key), JSON.stringify(value));
+  } catch {
+    /* storage quota or disabled — fail quietly so the UI keeps working */
+  }
+}
+
+/** Migrate from the pre-v3 monolithic blob to per-slice keys (idempotent). */
+function migrateLegacyBlob(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      localStorage.removeItem(KEY);
+      return;
+    }
+    if ("onboarded" in parsed) {
+      writeSlice("onboarded", !!parsed.onboarded);
+    }
+    if ("workspace" in parsed) {
+      writeSlice("workspace", parsed.workspace ?? null);
+    }
+    if (Array.isArray(parsed.providers) && parsed.providers.length) {
+      writeSlice("providers", parsed.providers);
+    }
+    if (Array.isArray(parsed.customClis)) {
+      writeSlice("customClis", parsed.customClis);
+    }
+    if (parsed.orchestrator && typeof parsed.orchestrator === "object") {
+      writeSlice("orchestrator", parsed.orchestrator);
+    }
+    if (parsed.prefs && typeof parsed.prefs === "object") {
+      writeSlice("prefs", parsed.prefs);
+    }
+    localStorage.removeItem(KEY);
+  } catch {
+    /* corrupt blob — remove it so subsequent loads fall back to defaults */
+    try {
+      localStorage.removeItem(KEY);
+    } catch {}
+  }
+}
+
 export const ACCENT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#a855f7"] as const;
 const DEFAULT_ACCENT_COLOR = ACCENT_COLORS[0];
 
@@ -288,6 +392,7 @@ const DEFAULT_STATE: AppState = {
   onboarded: false,
   workspace: null,
   providers: DEFAULT_PROVIDERS,
+  customClis: [],
   orchestrator: {
     model: "grok-2-1212",
     routingStrategy: "specialty",
@@ -317,6 +422,7 @@ type CliRegistryEntry = {
 
 type CliRegistryApiResponse = {
   clis?: CliRegistryEntry[];
+  custom_clis?: CustomCli[];
 };
 
 const PROVIDER_BY_CLI_SLUG: Record<string, string> = {
@@ -510,30 +616,35 @@ function toBackendPreferences(state: AppState): Record<string, unknown> {
 
 function loadInitial(): AppState {
   if (typeof window === "undefined") return DEFAULT_STATE;
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_STATE;
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return DEFAULT_STATE;
-    return {
-      ...DEFAULT_STATE,
-      ...parsed,
-      providers:
-        Array.isArray(parsed.providers) && parsed.providers.length
-          ? mergeProviders(parsed.providers)
-          : DEFAULT_PROVIDERS,
-      orchestrator: { ...DEFAULT_STATE.orchestrator, ...(parsed.orchestrator || {}) },
-      prefs: {
-        ...DEFAULT_STATE.prefs,
-        ...(parsed.prefs || {}),
-        accentColor: isHexColor(parsed.prefs?.accentColor)
-          ? parsed.prefs.accentColor
-          : DEFAULT_STATE.prefs.accentColor,
-      },
-    };
-  } catch {
-    return DEFAULT_STATE;
-  }
+
+  // One-time upgrade from the pre-v3 monolithic blob to per-slice keys. This
+  // is a no-op on subsequent loads and on fresh installs.
+  migrateLegacyBlob();
+
+  const onboarded = readSlice("onboarded", DEFAULT_STATE.onboarded);
+  const workspace = readSlice("workspace", DEFAULT_STATE.workspace);
+  const providersRaw = readSlice("providers", null as unknown as Provider[]);
+  const customClis = readSlice("customClis", [] as CustomCli[]);
+  const orchestrator = readSlice("orchestrator", DEFAULT_STATE.orchestrator);
+  const prefsRaw = readSlice("prefs", DEFAULT_STATE.prefs);
+
+  return {
+    ...DEFAULT_STATE,
+    onboarded: !!onboarded,
+    workspace: workspace ?? null,
+    providers: Array.isArray(providersRaw) && providersRaw.length
+      ? mergeProviders(providersRaw)
+      : DEFAULT_PROVIDERS,
+    customClis: Array.isArray(customClis) ? customClis : [],
+    orchestrator: { ...DEFAULT_STATE.orchestrator, ...(orchestrator || {}) },
+    prefs: {
+      ...DEFAULT_STATE.prefs,
+      ...(prefsRaw || {}),
+      accentColor: isHexColor(prefsRaw?.accentColor)
+        ? prefsRaw.accentColor
+        : DEFAULT_STATE.prefs.accentColor,
+    },
+  };
 }
 
 /**
@@ -586,12 +697,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     document.documentElement.style.setProperty("zoom", zoom);
   }, [state.prefs.fontSize]);
 
+  // Per-slice persistence with debouncing. We track the last-persisted state
+  // so only the slices whose values actually changed get re-written — typing
+  // into the chat input (which mutates ephemeral `busy`/`planSteps`) used to
+  // rewrite the entire ~25KB blob every 250ms; now it touches nothing.
+  const lastPersistedRef = useRef<AppState>(state);
+
   useEffect(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      try {
-        localStorage.setItem(KEY, JSON.stringify(state));
-      } catch {}
+      const prev = lastPersistedRef.current;
+      if (prev.onboarded !== state.onboarded) {
+        writeSlice("onboarded", state.onboarded);
+      }
+      if (prev.workspace !== state.workspace) {
+        writeSlice("workspace", state.workspace);
+      }
+      if (prev.providers !== state.providers) {
+        writeSlice("providers", state.providers);
+      }
+      if (prev.customClis !== state.customClis) {
+        writeSlice("customClis", state.customClis);
+      }
+      if (prev.orchestrator !== state.orchestrator) {
+        writeSlice("orchestrator", state.orchestrator);
+      }
+      if (prev.prefs !== state.prefs) {
+        writeSlice("prefs", state.prefs);
+      }
+      lastPersistedRef.current = state;
     }, 250);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -653,10 +787,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (response.ok) {
           const payload = (await response.json()) as CliRegistryApiResponse;
           const clis = Array.isArray(payload.clis) ? payload.clis : [];
-          if (!cancelled && clis.length > 0) {
+          const custom = Array.isArray(payload.custom_clis) ? payload.custom_clis : [];
+          if (!cancelled && (clis.length > 0 || custom.length > 0)) {
             setState((prev) => ({
               ...prev,
-              providers: applyCliRegistry(prev.providers, clis),
+              providers: clis.length > 0 ? applyCliRegistry(prev.providers, clis) : prev.providers,
+              customClis: custom.length > 0 ? custom : prev.customClis,
             }));
           }
         }
@@ -829,6 +965,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           providers: typeof u === "function" ? (u as any)(s.providers) : u,
         }))) as Ctx["setProviders"],
+      setCustomClis: ((u) =>
+        setState((s) => ({
+          ...s,
+          customClis: typeof u === "function" ? (u as any)(s.customClis) : u,
+        }))) as Ctx["setCustomClis"],
       setOrchestrator: ((u) =>
         setState((s) => ({
           ...s,
@@ -873,7 +1014,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       reset: async () => {
+        // Wipe every persisted slice plus the legacy monolithic key
+        // (in case the user reset mid-migration before reload).
         try {
+          for (const k of Object.values(SLICE_KEYS)) {
+            localStorage.removeItem(k);
+          }
           localStorage.removeItem(KEY);
         } catch {}
         setState({

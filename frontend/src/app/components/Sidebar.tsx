@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Activity,
@@ -19,6 +19,7 @@ import { apiFetch, healthCheckUrl } from "../lib/api";
 import { gitStatusPoller, sessionsPoller } from "../lib/appPollers";
 import { useSharedPoller } from "../lib/sharedPoller";
 import { usePolling } from "../lib/usePolling";
+import { sortProvidersByHealth } from "../lib/providerSort";
 
 const STATUS_MAP: Record<Status, { dot: string; label: string; text: string }> = {
   online: { dot: "bg-emerald-500", label: "online", text: "text-emerald-600 dark:text-emerald-400" },
@@ -98,6 +99,7 @@ export function Sidebar({
   onSelectSession?: (sessionId: number) => void;
 }) {
   const { providers } = useStore();
+  const sortedProviders = useMemo(() => sortProvidersByHealth(providers), [providers]);
   const [collapsed, setCollapsed] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [gitOpen, setGitOpen] = useState(true);
@@ -493,7 +495,7 @@ export function Sidebar({
             <Menu className="h-3.5 w-3.5" />
           </button>
           <div className="mt-2 flex flex-1 flex-col items-center gap-2 overflow-y-auto">
-            {providers.map((p) => {
+            {sortedProviders.map((p) => {
               const s = STATUS_MAP[p.status];
               return (
                 <div

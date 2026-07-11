@@ -14,10 +14,13 @@ import shutil
 from pathlib import Path
 
 from backend.utils import utc_now
+from backend.utils.logger import get_logger
 from backend.database.models import (
     UserPreference, UserPreferenceCreate, UserPreferenceUpdate,
     PreferenceType
 )
+
+logger = get_logger(__name__)
 from backend.api.dependencies import (
     get_db, get_current_user_id
 )
@@ -50,6 +53,7 @@ class CliRegistryResponse(BaseModel):
     version: Optional[str] = None
     last_updated: Optional[str] = None
     clis: List[Dict[str, Any]]
+    custom_clis: List[Dict[str, Any]] = []  # user-defined CLIs
 
 
 class StorageAreaResponse(BaseModel):
@@ -197,17 +201,49 @@ def _clear_directory_contents(root: Path) -> Tuple[int, int]:
 
 
 @router.get("/cli-registry", response_model=CliRegistryResponse)
-async def get_cli_registry() -> CliRegistryResponse:
+async def get_cli_registry(
+    db: aiosqlite.Connection = Depends(get_db),
+    _user_id: int = Depends(get_current_user_id),
+) -> CliRegistryResponse:
     """
     Get CLI registry used by installer/bootstrapper.
     This keeps frontend CLI configuration aligned with system-level CLI definitions.
+
+    The response includes the bundled CLI list (`clis`) and any user-defined
+    custom CLIs (`custom_clis`) so callers (e.g. the agent picker) can render
+    built-ins and custom entries side by side without a second round-trip.
     """
+    from backend.services.custom_cli_service import list_custom_clis_async
+
     registry_path = (
         Path(__file__).resolve().parents[3]
         / "packaging"
         / "bootstrapper"
         / "cli_registry.json"
     )
+
+    # Fetch user-defined CLIs from the custom_cli table (default to empty).
+    try:
+        custom_rows = await list_custom_clis_async(db, enabled_only=False)
+        custom_payload = [
+            {
+                "slug": r.slug,
+                "name": r.display_name,
+                "command": r.command,
+                "args_template": r.args_template,
+                "description": r.description,
+                "enabled": r.enabled,
+                "custom": True,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            }
+            for r in custom_rows
+        ]
+    except Exception as exc:
+        # A schema mismatch or missing table shouldn't blow up the whole
+        # endpoint — bundled CLIs are still useful on their own.
+        logger.warning("Failed to load custom CLIs for cli-registry: %s", exc)
+        custom_payload = []
 
     if not registry_path.exists():
         default_clis = [
@@ -216,7 +252,7 @@ async def get_cli_registry() -> CliRegistryResponse:
             {"slug": "codex-cli", "name": "Codex CLI", "required": False},
             {"slug": "copilot-cli", "name": "Copilot CLI", "required": False},
         ]
-        return CliRegistryResponse(clis=default_clis)
+        return CliRegistryResponse(clis=default_clis, custom_clis=custom_payload)
 
     try:
         raw = registry_path.read_text(encoding="utf-8")
@@ -243,7 +279,8 @@ async def get_cli_registry() -> CliRegistryResponse:
     return CliRegistryResponse(
         version=str(version) if version is not None else None,
         last_updated=str(payload.get("last_updated")) if payload.get("last_updated") is not None else None,
-        clis=clis
+        clis=clis,
+        custom_clis=custom_payload,
     )
 
 

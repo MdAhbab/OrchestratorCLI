@@ -103,10 +103,20 @@ def parse_usage_from_text(text: str) -> Optional[dict]:
         pct       : float 0..1 or None
         reset_at  : str (ISO-8601) or None
         exhausted : bool
+        quota_window : str or None
 
     Returns None when no quota signal is detected at all.
     The dict is always best-effort; individual fields may be None when they
     cannot be derived from the available text.
+
+    Exhaustion rules (more conservative than before to avoid false positives):
+
+    1. An explicit >=100% numeric threshold (e.g. "used 1000 / 1000",
+       "100% of limit") is authoritative — exhausted flips immediately.
+    2. Otherwise, *at least two distinct match categories* must corroborate
+       (HARD_LIMIT, RATE_LIMIT, USED_AT_LIMIT). A single weak signal in
+       isolation is reported but does not mark the CLI as exhausted.
+    3. The bare "quota" keyword is informational only and never exhausts.
     """
     if not text:
         return None
@@ -121,17 +131,20 @@ def parse_usage_from_text(text: str) -> Optional[dict]:
     }
     found_any_signal = False
 
-    # 1. Hard-limit check → mark exhausted
-    if _RE_HARD_LIMIT.search(text):
-        result["exhausted"] = True
-        found_any_signal = True
+    # Track distinct corroborating categories so we can require >=2 (or a
+    # numeric override) before declaring the CLI exhausted.
+    categories: set[str] = set()
+    numeric_override: bool = False
 
-    # 2. Rate-limit / 429 (not necessarily hard-exhausted)
+    # 1. Hard-limit check (forbidden / access denied / quota-exceeded prose)
+    if _RE_HARD_LIMIT.search(text):
+        found_any_signal = True
+        categories.add("HARD_LIMIT")
+
+    # 2. Rate-limit / 429 patterns
     if _RE_RATE_LIMIT.search(text):
         found_any_signal = True
-        # Treat a bare rate-limit as exhausted for pre-emption safety
-        # (the CLI is refusing requests; treat it as unusable right now).
-        result["exhausted"] = True
+        categories.add("RATE_LIMIT")
 
     # 3. "X% of daily/weekly/monthly limit"
     m = _RE_PCT_OF_LIMIT.search(text)
@@ -143,9 +156,10 @@ def parse_usage_from_text(text: str) -> Optional[dict]:
         if window_word:
             result["quota_window"] = window_word  # e.g. "daily"
         if pct_raw >= 1.0:
-            result["exhausted"] = True
+            categories.add("PCT_AT_LIMIT")
+            numeric_override = True
 
-    # 4. "used N / limit M"
+    # 4. "used N / limit M" (or "N tokens of M")
     m = _RE_USED_OF_LIMIT.search(text)
     if m:
         found_any_signal = True
@@ -161,11 +175,12 @@ def parse_usage_from_text(text: str) -> Optional[dict]:
             pct = used / limit
             result["pct"] = min(round(pct, 4), 1.0)
             if pct >= 1.0:
-                result["exhausted"] = True
+                categories.add("USED_AT_LIMIT")
+                numeric_override = True
         else:
             result["pct"] = 0.0
 
-    # 5. "resets at <time>"
+    # 5. "resets at <time>" — informational, never exhausts
     m = _RE_RESET_AT.search(text)
     if m:
         found_any_signal = True
@@ -177,10 +192,16 @@ def parse_usage_from_text(text: str) -> Optional[dict]:
     # 6. Bare "quota" keyword as a weak signal (only flag if nothing else matched)
     if not found_any_signal and _RE_QUOTA.search(text):
         found_any_signal = True
-        # Weak signal — don't mark exhausted, just note the presence
+        # Weak signal — never marks exhausted on its own.
 
     if not found_any_signal:
         return None
+
+    # Apply the consolidated exhaustion decision:
+    #   - numeric override (>=100%) is authoritative, OR
+    #   - at least 2 distinct corroborating categories matched.
+    if numeric_override or len(categories) >= 2:
+        result["exhausted"] = True
 
     return result
 

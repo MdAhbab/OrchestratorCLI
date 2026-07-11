@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -35,11 +35,15 @@ import { apiFetch, apiPath, readSseJsonStream } from "../lib/api";
 import { orchestratorToApiPayload } from "../lib/orchestratorConfig";
 import { CliInstallHint } from "./CliInstallHint";
 import { SessionHistory } from "./SessionHistory";
+import { CustomCliPanel } from "./CustomCliPanel";
+import { listCustomClis } from "../lib/customCli";
+import { sortProvidersByHealth } from "../lib/providerSort";
 
 type Tab =
   | "general"
   | "providers"
   | "cli-setup"
+  | "custom-cli"
   | "terminals"
   | "orchestrator"
   | "context"
@@ -53,6 +57,7 @@ const TABS: { id: Tab; label: string; icon: typeof Folder; desc: string }[] = [
   { id: "general", label: "General", icon: Folder, desc: "Workspace · appearance · font" },
   { id: "providers", label: "Providers", icon: Plug, desc: "All connected CLIs" },
   { id: "cli-setup", label: "Setup CLIs", icon: Wrench, desc: "Algorithmic installer" },
+  { id: "custom-cli", label: "Custom CLIs", icon: TerminalIcon, desc: "User-registered executables" },
   { id: "terminals", label: "Terminals", icon: TerminalIcon, desc: "Live per-agent terminals" },
   { id: "orchestrator", label: "Orchestrator", icon: Cpu, desc: "Model · routing · caps" },
   { id: "context", label: "Context", icon: Layers, desc: "Sync · auto-generated files" },
@@ -185,6 +190,7 @@ export function Settings({
             {tab === "general" && <GeneralPanel />}
             {tab === "providers" && <ProvidersPanel />}
             {tab === "cli-setup" && <CliSetupPanel />}
+            {tab === "custom-cli" && <CustomCliPanel />}
             {tab === "terminals" && <TerminalsPanel clis={clis} />}
             {tab === "orchestrator" && <OrchestratorPanel />}
             {tab === "context" && <ContextPanel />}
@@ -555,11 +561,33 @@ const KEY_HELP: Record<string, { url: string; label: string }> = {
 
 function ProvidersPanel() {
   const { providers, setProviders } = useStore();
+  const [customCount, setCustomCount] = useState<number | null>(null);
+  // Health-weighted ordering: healthy providers first so attention naturally
+  // lands on actionable rows. Ties break alphabetically.
+  const sortedProviders = useMemo(
+    () => sortProvidersByHealth(providers),
+    [providers],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    listCustomClis()
+      .then((rows) => {
+        if (!cancelled) setCustomCount(rows.length);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       <SectionTitle title="Providers" sub="Manage every CLI's credentials and default model." />
       <div className="space-y-2">
-        {providers.map((p) => (
+        {sortedProviders.map((p) => (
           <ProviderRow
             key={p.id}
             p={p}
@@ -569,6 +597,14 @@ function ProvidersPanel() {
           />
         ))}
       </div>
+
+      {customCount !== null && customCount > 0 && (
+        <div className="mt-6 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 px-4 py-3 text-[12px] text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
+          {customCount} custom {customCount === 1 ? "CLI is" : "CLIs are"} also available —
+          registered executables that surface alongside the bundled providers.
+          Manage them in the <span className="font-medium">Custom CLIs</span> tab.
+        </div>
+      )}
     </>
   );
 }

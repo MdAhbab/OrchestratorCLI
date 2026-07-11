@@ -263,8 +263,12 @@ export function TerminalCard({
           const data = await res.json();
           rid = data.runtime_id as number;
           currentWsUrl = data.ws_url as string;
-          if (data.shell_label) setShellLabel(data.shell_label as string);
+          // Guard the post-await state writes — the component may have been
+          // torn down (or the spawn superseded) while the request was in
+          // flight, in which case React will warn about updating an unmounted
+          // component and the WS URL will already have been cleared.
           if (cancelled) return;
+          if (data.shell_label) setShellLabel(data.shell_label as string);
           setRuntimeId(rid);
           wsUrlRef.current = currentWsUrl;
           onRuntime?.(cli.providerId, rid);

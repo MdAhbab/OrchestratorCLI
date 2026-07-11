@@ -81,7 +81,7 @@ export function TopBar({
   useEffect(() => {
     const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI as
       | {
-          onUpdateDownloaded?: (cb: (info: { version: string }) => void) => void;
+          onUpdateDownloaded?: (cb: (info: { version: string }) => void) => () => void;
           installUpdate?: () => void;
         }
       | undefined;
@@ -91,7 +91,7 @@ export function TopBar({
     // would fire 2x, 3x, ... per actual emit).
     const off = api.onUpdateDownloaded((info) => setUpdateVersion(info.version));
     return () => {
-      off();
+      off?.();
     };
   }, []);
 

@@ -121,6 +121,43 @@ def run_checks(base: str, with_pty: bool) -> None:
     code, _ = http("GET", f"{api}/settings/cli-registry")
     record(PASS if code == 200 else FAIL, "CLI registry", f"HTTP {code}")
 
+    # Custom CLI registry: full register -> list -> fetch -> merge -> delete cycle.
+    slug = "smoke-test-cli"
+    code, body = http("POST", f"{api}/cli/custom", {
+        "slug": slug, "display_name": "Smoke Test CLI",
+        "command": "echo", "args_template": "{prompt}",
+        "description": "created by smoke_test.py",
+    })
+    created = code in (200, 201) and isinstance(body, dict) and body.get("slug") == slug
+    record(PASS if created else FAIL, "custom CLI register", f"HTTP {code}")
+
+    if created:
+        code, body = http("GET", f"{api}/cli/custom")
+        listed = (code == 200 and isinstance(body, dict)
+                  and any(c.get("slug") == slug for c in body.get("clis", [])))
+        record(PASS if listed else FAIL, "custom CLI list contains entry", f"HTTP {code}")
+
+        code, body = http("GET", f"{api}/cli/custom/{slug}")
+        record(PASS if code == 200 and isinstance(body, dict) and body.get("command") == "echo"
+               else FAIL, "custom CLI fetch by slug", f"HTTP {code}")
+
+        code, body = http("GET", f"{api}/settings/cli-registry")
+        merged = (code == 200 and isinstance(body, dict)
+                  and any(c.get("slug") == slug for c in body.get("custom_clis", [])))
+        record(PASS if merged else FAIL, "cli-registry merges custom CLIs", f"HTTP {code}")
+
+        code, _ = http("DELETE", f"{api}/cli/custom/{slug}")
+        record(PASS if code in (200, 204) else FAIL, "custom CLI delete", f"HTTP {code}")
+
+        code, _ = http("GET", f"{api}/cli/custom/{slug}")
+        record(PASS if code == 404 else FAIL, "custom CLI gone after delete", f"HTTP {code} (expected 404)")
+
+    code, _ = http("POST", f"{api}/cli/custom", {
+        "slug": "Bad Slug!", "display_name": "x", "command": "echo; rm -rf /",
+    })
+    record(PASS if code in (400, 422) else FAIL,
+           "custom CLI rejects invalid input", f"HTTP {code} (expected 4xx)")
+
     if with_pty:
         code, body = http("POST", f"{api}/runtimes/spawn",
                           {"provider_name": "SmokeTest", "cols": 80, "rows": 24}, timeout=30)

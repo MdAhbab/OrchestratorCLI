@@ -35,6 +35,7 @@ from backend.api.routes import (
     agents,
     tools,
     installer,
+    custom_cli,
 )
 from backend.api.websockets import terminals as ws_terminals
 from backend.services.pty_service import pty_manager
@@ -221,6 +222,7 @@ app.include_router(onboarding.router, prefix=settings.api_prefix)
 app.include_router(agents.router, prefix=settings.api_prefix)
 app.include_router(tools.router, prefix=settings.api_prefix)
 app.include_router(installer.router, prefix=settings.api_prefix)
+app.include_router(custom_cli.router, prefix=settings.api_prefix)
 
 # WebSocket router (no /api prefix so URL stays /ws/terminals/<id>).
 app.include_router(ws_terminals.router)

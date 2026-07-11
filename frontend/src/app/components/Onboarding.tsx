@@ -37,6 +37,7 @@ import { useTheme } from "./theme";
 import { OrchestratorLogo } from "./OrchestratorLogo";
 import { apiFetch, apiPath, isAbortError } from "../lib/api";
 import { CliInstallHint } from "./CliInstallHint";
+import { sortProvidersByHealth } from "../lib/providerSort";
 
 type CliCfg = {
   method: AuthMethod;
@@ -722,7 +723,8 @@ function StepSelectClis({
   const toggle = (id: string) =>
     setSelected(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
 
-  const unconfigured = providers.filter((p) => selected.includes(p.id) && !p.configured).length;
+  const sortedProviders = useMemo(() => sortProvidersByHealth(providers), [providers]);
+  const unconfigured = sortedProviders.filter((p) => selected.includes(p.id) && !p.configured).length;
 
   return (
     <div className="px-8 py-10">
@@ -739,7 +741,7 @@ function StepSelectClis({
       </p>
 
       <div className="mt-6 grid max-h-[340px] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 scrollbar-thin">
-        {providers.map((p) => {
+        {sortedProviders.map((p) => {
           const on = selected.includes(p.id);
           return (
             <button
@@ -942,6 +944,8 @@ function StepConfigureAll({
   const patch = (id: string, p: Partial<CliCfg>) =>
     setCliCfg((prev) => ({ ...prev, [id]: { ...prev[id], ...p } }));
 
+  const sortedProviders = useMemo(() => sortProvidersByHealth(providers), [providers]);
+
   return (
     <div className="px-8 py-10">
       <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-indigo-500">
@@ -963,7 +967,7 @@ function StepConfigureAll({
       </p>
 
       <div className="mt-6 max-h-[420px] space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-        {providers.map((p) => {
+        {sortedProviders.map((p) => {
           const c = cliCfg[p.id];
           if (!c) return null;
           const isOpen = expanded === p.id;
