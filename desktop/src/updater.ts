@@ -60,6 +60,14 @@ export function setupAutoUpdater(win: BrowserWindow): void {
     autoUpdater.quitAndInstall(false, true);
   });
 
+  // Manual "Check for updates" from the About panel.
+  ipcMain.on("update-check", () => {
+    autoUpdater.checkForUpdatesAndNotify().catch((err: Error) => {
+      console.warn("[updater] manual check failed:", err.message);
+      notify("update-not-available");
+    });
+  });
+
   // Delay check slightly so the window is ready
   setTimeout(() => {
     autoUpdater.checkForUpdatesAndNotify().catch((err: Error) => {

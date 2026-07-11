@@ -45,13 +45,18 @@ class Settings(BaseSettings):
     api_port: int = 8000
     
     # CORS
+    # Include the desktop static-server port range (5174..5193) so the same
+    # CORS allow-list works in both standalone (`python run.py`) and packaged
+    # builds. The Electron manager overrides this list with the same range via
+    # the CORS_ORIGINS env var, but the fallback is the default for developers
+    # running the backend without the desktop shell.
     cors_origins: Annotated[List[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
+        *[f"http://localhost:{p}" for p in range(5174, 5194)],
+        *[f"http://127.0.0.1:{p}" for p in range(5174, 5194)],
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: Annotated[List[str], NoDecode] = ["*"]
