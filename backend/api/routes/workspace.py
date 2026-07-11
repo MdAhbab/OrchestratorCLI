@@ -312,6 +312,22 @@ async def workspace_git_run(
         if any(low == blocked or low.startswith(blocked + "=") for blocked in _GIT_ARG_BLOCKLIST):
             raise HTTPException(400, f"git argument '{arg}' is not allowed")
 
+    # Hardening: A blocklist flag must never appear as a bare token whose
+    # value follows as a separate shell token (e.g. `git fetch --upload-pack
+    # evil`), because then neither the flag nor the value would match the
+    # blocklist string match above. Walk the parsed argv and reject any
+    # blocklisted long option that does not already carry `=value`.
+    for i, arg in enumerate(parts[1:], start=1):
+        low = arg.lower()
+        for blocked in _GIT_ARG_BLOCKLIST:
+            if low == blocked:
+                raise HTTPException(
+                    400,
+                    f"git argument '{arg}' is not allowed (use '{blocked}=...' "
+                    f"form only if absolutely required, and even then it is "
+                    f"blocked by policy for safety)",
+                )
+
     if subcmd == "config":
         flags = {p for p in parts[1:] if p.startswith("-")}
         if flags & _GIT_CONFIG_BLOCKED or not (flags & _GIT_CONFIG_READ_FLAGS):

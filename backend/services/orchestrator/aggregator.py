@@ -2,22 +2,34 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+import hashlib
+from typing import Any, Dict, List, Tuple
 
 from .messages import OrchestratorPlan, TaskDivision
+
+
+def _division_key(d: TaskDivision) -> Tuple[str, str]:
+    """Key a division by (agent short, instructions hash) so genuine
+    distinct tasks on the same agent are preserved when merging plans."""
+    digest = hashlib.sha1((d.instructions or "").encode("utf-8")).hexdigest()[:12]
+    return (d.short, digest)
 
 
 def merge_divisions(
     primary: List[TaskDivision],
     supplemental: List[TaskDivision],
 ) -> List[TaskDivision]:
-    """Merge divisions without duplicating agent short ids."""
-    seen = {d.short for d in primary}
-    merged = list(primary)
+    """Merge divisions while preserving two distinct tasks on the same
+    agent. Earlier behaviour keyed on the agent ``short`` only, which
+    silently dropped legitimate fan-outs (e.g. two Claude Code tasks).
+    """
+    seen: set[Tuple[str, str]] = {_division_key(d) for d in primary}
+    merged: List[TaskDivision] = list(primary)
     for d in supplemental:
-        if d.short not in seen:
+        key = _division_key(d)
+        if key not in seen:
             merged.append(d)
-            seen.add(d.short)
+            seen.add(key)
     return merged
 
 

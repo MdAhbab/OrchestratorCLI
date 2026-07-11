@@ -86,9 +86,12 @@ class PosixPTY:
             try:
                 os.close(self._master)
                 os.setsid()
+                import fcntl
                 import termios
 
-                os.ioctl(self._slave, termios.TIOCSCTTY, 0)
+                # Make the slave the controlling terminal (ioctl lives in
+                # fcntl, not os — os.ioctl does not exist).
+                fcntl.ioctl(self._slave, termios.TIOCSCTTY, 0)
                 os.dup2(self._slave, 0)
                 os.dup2(self._slave, 1)
                 os.dup2(self._slave, 2)
@@ -134,13 +137,22 @@ class PosixPTY:
     def isalive(self) -> bool:
         if self._pid is None:
             return False
-        pid, status = os.waitpid(self._pid, os.WNOHANG)
+        # Once reaped, waitpid raises ChildProcessError on every later call.
+        if self._exitstatus is not None:
+            return False
+        try:
+            pid, status = os.waitpid(self._pid, os.WNOHANG)
+        except ChildProcessError:
+            self._exitstatus = -1
+            return False
         if pid == 0:
             return True
         if os.WIFEXITED(status):
             self._exitstatus = os.WEXITSTATUS(status)
         elif os.WIFSIGNALED(status):
             self._exitstatus = -os.WTERMSIG(status)
+        else:
+            self._exitstatus = -1
         return False
 
     def get_exitstatus(self) -> Optional[int]:
