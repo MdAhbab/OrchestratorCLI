@@ -25,7 +25,11 @@ env/
 ENV/
 .venv
 
-
+.puku/
+puku/
+.puku/
+.puku/**
+!/.puku/.gitkeep
 
 # FastAPI
 .pytest_cache/
