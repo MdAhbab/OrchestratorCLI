@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class DatabaseInitializer:
     """Handles database initialization and management."""
     
-    def __init__(self, db_path: str = "data/bob.db"):
+    def __init__(self, db_path: str = "storage/data/orchestrator.db"):
         """
         Initialize the database initializer.
         
@@ -35,9 +35,10 @@ class DatabaseInitializer:
         """Ensure the parent directory of the database file exists and is writable.
 
         Previously enforced that the DB must live under a folder named 'data/'.
-        That constraint is now relaxed to support containerised or custom mount-point
-        installs (e.g. /var/lib/ibmbob/bob.db, %LOCALAPPDATA%\\IBMBob\\data\\bob.db).
-        We still prefer the canonical <project>/data/ location for new installs.
+        That constraint is now relaxed to support containerised or custom
+        mount-point installs (e.g. /var/lib/orchestrator/orchestrator.db, a
+        user-data dir on Windows). We still prefer the canonical
+        <project>/storage/data/ location for new installs.
         """
         abs_path = Path(self.db_path).resolve()
         db_dir = abs_path.parent
@@ -775,7 +776,7 @@ class DatabaseInitializer:
             raise
 
 
-def init_database(db_path: str = "data/bob.db", force: bool = False) -> DatabaseInitializer:
+def init_database(db_path: str = "storage/data/orchestrator.db", force: bool = False) -> DatabaseInitializer:
     """
     Convenience function to initialize the database.
     
@@ -800,7 +801,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Initialize AI Orchestrator database")
     parser.add_argument(
         "--db-path",
-        default="data/bob.db",
+        default="storage/data/orchestrator.db",
         help="Path to the SQLite database file"
     )
     parser.add_argument(

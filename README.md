@@ -205,7 +205,7 @@ API_HOST=0.0.0.0
 API_PORT=8000
 
 # Database
-DATABASE_URL=sqlite+aiosqlite:///./data/bob.db
+DATABASE_URL=sqlite+aiosqlite:///./storage/data/orchestrator.db
 
 # Security
 SECRET_KEY=your-secret-key-change-in-production
@@ -259,7 +259,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for routing, A2A, and MCP detai
 | `DEBUG` | Enable debug mode | `true` |
 | `API_HOST` | Backend host | `0.0.0.0` |
 | `API_PORT` | Backend port | `8000` |
-| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///./data/bob.db` |
+| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///./storage/data/orchestrator.db` |
 | `SECRET_KEY` | Secret key for sessions | Required in production |
 | `ENCRYPTION_KEY` | Key for encrypting sensitive data | Required in production |
 | `CORS_ORIGINS` | Allowed CORS origins | `["http://localhost:5173"]` |
@@ -339,28 +339,23 @@ OrchestratorCLI/
 │   ├── package.json    # Node dependencies
 │   └── vite.config.ts  # Vite configuration
 │
-├── data/               # Local SQLite database files (generated, ignored)
-├── uploads/            # Uploaded/generated files (generated, ignored)
-│   ├── context/       # Context files
-│   └── artifacts/     # Generated artifacts
-├── runtime/            # Runtime cache/tmp data (generated, ignored)
-│   ├── cache/
-│   └── tmp/
+├── desktop/            # Electron desktop shell (installers in desktop/release/)
+├── downloader_page/    # Marketing/download site
+├── migrations/         # SQL migrations
+├── packaging/          # Installer build pipeline
+│
+├── storage/            # Local runtime data: DB, uploads, cache (generated, ignored)
 │
 ├── shared/            # Shared resources
 │   ├── sessions/      # Session data
 │   ├── plan.md        # Shared project plan
 │   └── skill.md       # Skill templates
 │
-├── docs/              # Documentation
-│   ├── API.md         # API documentation
-│   ├── PROJECT_STRUCTURE.md
-│   └── QUICK_START.md
+├── docs/              # Documentation + assets
 │
-├── release/           # Release and installer files
-│   └── installer/     # Installer builder
-│
-├── run.py            # Main launcher script
+├── compile.py        # Build the desktop installers (see --help)
+├── smoke_test.py     # Automated API smoke test + manual checklist
+├── run.py            # Main launcher script (browser mode)
 ├── README.md         # This file
 └── LICENSE           # License information
 ```
@@ -423,7 +418,7 @@ python run.py --no-reload
 # Initialize/reset database
 python run.py --init-db
 
-# The database will be created at: data/bob.db
+# The database will be created at: storage/data/orchestrator.db
 ```
 
 ---
@@ -523,12 +518,12 @@ npm run build
 
 **PM2:**
 ```bash
-pm2 start run.py --interpreter python3 --name ibm-bob
+pm2 start run.py --interpreter python3 --name orchestrator-cli
 ```
 
 **Supervisor:**
 ```ini
-[program:ibm-bob]
+[program:orchestrator-cli]
 command=python run.py --no-reload
 directory=/path/to/OrchestratorCLI
 autostart=true
@@ -590,7 +585,7 @@ CMD ["python", "run.py", "--no-reload", "--host", "0.0.0.0"]
 2. **Use HTTPS**: Deploy behind a reverse proxy with SSL/TLS
 3. **Restrict CORS**: Configure `CORS_ORIGINS` to only allow trusted domains
 4. **Environment Variables**: Never commit `.env` files to version control
-5. **Database Backups**: Regularly backup the `data/bob.db` file
+5. **Database Backups**: Regularly backup the `storage/data/orchestrator.db` file
 6. **Update Dependencies**: Keep all dependencies up to date
 
 ### Encryption

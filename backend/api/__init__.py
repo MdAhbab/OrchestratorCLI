@@ -1,5 +1,5 @@
 """
-API package for IBM Bob Backend.
+API package for the OrchestratorCLI backend.
 Contains all API routes and endpoints.
 """
 

@@ -1,5 +1,5 @@
 {
-  "name": "ibm-bob",
+  "name": "orchestrator-cli",
   "version": "0.9.1",
   "private": true,
   "description": "AI Orchestrator - multi-agent platform",

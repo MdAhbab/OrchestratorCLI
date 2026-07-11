@@ -152,25 +152,6 @@ const SEED: CliRuntime[] = [
       { kind: "out", text: "0 pending jobs" },
     ],
   },
-  {
-    id: "bob",
-    name: "IBM BOB",
-    glyph: "∎",
-    color: "text-blue-500",
-    accent: "linear-gradient(to right,#3b82f6,#6366f1)",
-    model: "granite-3.2-code",
-    models: ["granite-3.2-code", "granite-3.1-code-base"],
-    authMethod: "api_key",
-    state: "executing",
-    used: 3.4,
-    cap: 15,
-    task: "Generate granite code completions",
-    log: [
-      { kind: "sys", text: "iam token refreshed · ibm-cloud" },
-      { kind: "cmd", text: "complete src/lib/utils.ts:42" },
-      { kind: "ok", text: "8 suggestions ranked" },
-    ],
-  },
 ];
 
 function Shell() {

@@ -114,6 +114,16 @@ export function TopBar({
   const branch = git?.branch || "main";
   const dirty = git?.is_repo && (git.files_changed ?? 0) > 0;
   const isDesktop = Boolean(window.orchestratorDesktop?.isDesktop);
+  // Only Windows uses a frameless window with the native control overlay;
+  // reserve exactly the overlay's width via the titlebar-area env vars.
+  const isWinDesktop = isDesktop && window.orchestratorDesktop?.platform === "win32";
+  const barStyle = isWinDesktop
+    ? ({
+        WebkitAppRegion: "drag",
+        paddingRight:
+          "calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 0.75rem)",
+      } as React.CSSProperties)
+    : undefined;
 
   const handleInstallUpdate = () => {
     const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI as
@@ -124,23 +134,11 @@ export function TopBar({
 
   return (
     <div>
-      {backendOffline && (
-        <div className="bg-red-600 px-4 py-1.5 text-[11.5px] text-white text-center font-medium animate-pulse">
-          ⚠️ Connection lost: The backend server is offline. Please make sure the backend is running.
-        </div>
-      )}
-      {updateVersion && (
-        <UpdateBanner version={updateVersion} onInstall={handleInstallUpdate} />
-      )}
       <div
         className={`flex h-14 items-center justify-between gap-2 border-b border-zinc-200/70 bg-white/60 px-3 backdrop-blur dark:border-white/[0.06] dark:bg-zinc-950/40 sm:px-5 ${
-          isDesktop ? "select-none pl-3 pr-[9rem] pt-2" : ""
+          isWinDesktop ? "select-none pl-3" : ""
         }`}
-        style={
-          isDesktop
-            ? ({ WebkitAppRegion: "drag" } as React.CSSProperties)
-            : undefined
-        }
+        style={barStyle}
       >
         <div className="flex min-w-0 items-center gap-2">
           {onToggleSidebar && (
@@ -154,10 +152,27 @@ export function TopBar({
             </button>
           )}
           <div className="hidden min-w-0 items-center gap-1.5 text-[12.5px] text-zinc-600 dark:text-zinc-400 sm:flex">
-            <FolderGit2 className="h-3.5 w-3.5 text-zinc-400" />
-            <span className="truncate text-zinc-800 dark:text-zinc-200">
-              {workspace?.name || "no workspace"}
-            </span>
+            {workspace ? (
+              <button
+                onClick={() => onView("settings")}
+                title="Workspace settings"
+                className="flex min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 transition hover:bg-zinc-100 dark:hover:bg-white/[0.05]"
+                style={isDesktop ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+              >
+                <FolderGit2 className="h-3.5 w-3.5 text-zinc-400" />
+                <span className="truncate text-zinc-800 dark:text-zinc-200">{workspace.name}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => onView("settings")}
+                title="A workspace folder is required for artifacts, git, and shared context"
+                className="flex items-center gap-1.5 rounded-md border border-amber-300/50 bg-amber-50 px-2 py-1 text-[11.5px] text-amber-800 transition hover:bg-amber-100 dark:border-amber-400/25 dark:bg-amber-400/[0.08] dark:text-amber-300 dark:hover:bg-amber-400/[0.15]"
+                style={isDesktop ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+              >
+                <FolderGit2 className="h-3.5 w-3.5" />
+                Set workspace
+              </button>
+            )}
             <span className="text-zinc-300 dark:text-zinc-700">/</span>
             <span>{branch}</span>
             <span
@@ -249,6 +264,14 @@ export function TopBar({
           </div>
         </div>
       </div>
+      {backendOffline && (
+        <div className="bg-red-600 px-4 py-1.5 text-[11.5px] text-white text-center font-medium animate-pulse">
+          ⚠️ Connection lost: The backend server is offline. Please make sure the backend is running.
+        </div>
+      )}
+      {updateVersion && (
+        <UpdateBanner version={updateVersion} onInstall={handleInstallUpdate} />
+      )}
     </div>
   );
 }

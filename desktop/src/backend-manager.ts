@@ -100,10 +100,24 @@ export function ensureBackendVenv(
       ? path.join(venvDir, "python.exe")
       : path.join(venvDir, "python");
 
-  // Already installed — nothing to do.
+  // Already installed — but verify it actually works before trusting it.
+  // A stale or partially copied venv would otherwise crash-loop uvicorn.
   if (fs.existsSync(venvPython)) {
-    log("venv already present, skipping setup.");
-    return true;
+    try {
+      const probe = spawnSync(
+        venvPython,
+        ["-c", "import fastapi, uvicorn, aiosqlite"],
+        { timeout: 15_000 },
+      );
+      if (probe.status === 0) {
+        log("venv already present, skipping setup.");
+        return true;
+      }
+    } catch {
+      // treat as broken
+    }
+    log("Existing venv is broken — rebuilding it…");
+    fs.rmSync(path.join(backendDir, "venv"), { recursive: true, force: true });
   }
 
   log("venv not found — running first-launch setup…");
@@ -234,9 +248,22 @@ export class BackendManager {
     }
 
     const userDataDir = getUserDataDir();
-    const dbPath = path.join(getDataDir(), "bob.db");
+    const dbPath = path.join(getDataDir(), "orchestrator.db");
     const dbAbs = path.resolve(dbPath);
     fs.mkdirSync(path.dirname(dbAbs), { recursive: true });
+    // Migrate the legacy database name from earlier releases in place.
+    const legacyDb = path.join(getDataDir(), "bob.db");
+    if (!fs.existsSync(dbAbs) && fs.existsSync(legacyDb)) {
+      for (const suffix of ["", "-wal", "-shm"]) {
+        try {
+          if (fs.existsSync(legacyDb + suffix)) {
+            fs.renameSync(legacyDb + suffix, dbAbs + suffix);
+          }
+        } catch {
+          /* keep using whichever copy exists */
+        }
+      }
+    }
     getCacheDir();
     getTempDir();
 

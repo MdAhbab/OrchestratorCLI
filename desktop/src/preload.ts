@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   /** Tell the main process to quit-and-install */
   installUpdate: () => ipcRenderer.send("update-install-now"),
   selectWorkspaceFolder: () => ipcRenderer.invoke("workspace-select-folder"),
+  /** Sync the Windows title-bar overlay colors with the app theme. */
+  setTitleBarTheme: (dark: boolean) => ipcRenderer.send("titlebar-theme", dark),
   /**
    * Current app version — retrieved synchronously from the main process via IPC
    * because process.env.npm_package_version is not available in packaged apps.

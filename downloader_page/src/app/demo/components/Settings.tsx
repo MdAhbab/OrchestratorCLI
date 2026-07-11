@@ -475,7 +475,7 @@ function TerminalsPanel({ clis }: { clis: CliRuntime[] }) {
   );
 }
 
-const ORCH_MODELS = ["granite-3.2-instruct", "granite-3.2-code", "granite-3.1-instruct"] as const;
+const ORCH_MODELS = ["grok-3", "gemini-2.0-flash", "deepseek-chat"] as const;
 const ROUTING = ["specialty", "round_robin", "cheapest", "fastest"] as const;
 const ROUTING_LABELS: Record<string, string> = {
   specialty: "Specialty-based (recommended)",
@@ -488,9 +488,9 @@ function OrchestratorPanel() {
   const { orchestrator, setOrchestrator } = useStore();
   return (
     <>
-      <SectionTitle title="Orchestrator" sub="The IBM Cloud agent that divides tasks across your CLIs." />
+      <SectionTitle title="Orchestrator" sub="The planner LLM that divides tasks across your CLIs." />
       <div className="rounded-xl border border-zinc-200/70 bg-white/60 px-4 dark:border-white/[0.06] dark:bg-zinc-950/40">
-        <Row title="Orchestrator model" desc="Custom agent built on IBM Granite via IBM Cloud">
+        <Row title="Orchestrator model" desc="Planner LLM (Grok / Gemini / DeepSeek)">
           <div className="w-full sm:w-[240px]">
             <Dropdown
               value={orchestrator.model}
@@ -683,8 +683,8 @@ function AboutPanel() {
           </div>
         </div>
         <p className="mt-4 max-w-md text-[15.5px] leading-relaxed text-zinc-600 dark:text-zinc-300">
-          MIT licensed. Built with React, Tailwind, and a tiny IBM-Cloud-powered routing agent
-          that orchestrates Claude, Gemini, Codex, Copilot, DeepSeek, Kimi, Cline, and BOB.
+          MIT licensed. Built with React, Tailwind, and a quota-aware planner LLM
+          that orchestrates Claude, Gemini, Codex, Copilot, DeepSeek, Kimi, and Cline.
         </p>
         <div className="mt-4 flex gap-2">
           <a className="rounded-md border border-zinc-200/70 bg-white px-2.5 py-1 text-[14px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200">

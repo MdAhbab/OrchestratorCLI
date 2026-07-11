@@ -61,26 +61,8 @@ dist-ssr/
 shared/sessions/*.yaml
 !shared/sessions/.gitkeep
 
-# Local runtime storage (SQLite DB, caches, uploads created by a dev server)
+# Local runtime storage (SQLite DB, key file, caches, uploads)
 storage/
-
-# Runtime/generated app data
-uploads/*
-!uploads/.gitkeep
-!uploads/context/
-uploads/context/*
-!uploads/context/.gitkeep
-!uploads/artifacts/
-uploads/artifacts/*
-!uploads/artifacts/.gitkeep
-runtime/*
-!runtime/.gitkeep
-!runtime/cache/
-runtime/cache/*
-!runtime/cache/.gitkeep
-!runtime/tmp/
-runtime/tmp/*
-!runtime/tmp/.gitkeep
 
 # Logs
 logs/
@@ -102,12 +84,3 @@ build/
 tmp/
 temp/
 *.tmp
-!runtime/tmp/
-!runtime/tmp/.gitkeep
-
-# Local SQLite database (created at runtime)
-data/*.db
-data/*.db-shm
-data/*.db-wal
-data/*.key
-!data/.gitkeep

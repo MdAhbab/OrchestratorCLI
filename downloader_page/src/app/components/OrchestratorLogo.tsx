@@ -32,5 +32,3 @@ export function OrchestratorLogo({ size = 40, className = "" }: { size?: number;
     </svg>
   );
 }
-
-// Made with Bob

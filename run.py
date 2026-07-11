@@ -567,7 +567,7 @@ class ProcessManager:
             except Exception:
                 pass
 
-        return "data/bob.db"
+        return "storage/data/orchestrator.db"
 
     @staticmethod
     def _parse_sqlite_path_from_url(database_url: str) -> Optional[str]:

@@ -42,8 +42,16 @@ def get_encryption_key() -> bytes:
     # If not set in env, check/persist to key file
     if not raw:
         from pathlib import Path
-        key_file = settings.database_path.parent / "bob.key"
-            
+        key_file = settings.database_path.parent / "orchestrator.key"
+        # Migrate the legacy key filename in place — the key must survive the
+        # rename or previously encrypted credentials become undecryptable.
+        legacy_key = settings.database_path.parent / "bob.key"
+        if not key_file.exists() and legacy_key.exists():
+            try:
+                legacy_key.rename(key_file)
+            except OSError:
+                key_file = legacy_key
+
         if key_file.exists():
             try:
                 raw = key_file.read_text(encoding="utf-8").strip()

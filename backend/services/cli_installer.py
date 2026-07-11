@@ -674,7 +674,7 @@ def _get_node_pkg_url() -> str:
 
 def _download_file(url: str, dest: Path) -> None:
     """Download a file with a User-Agent header."""
-    req = urllib.request.Request(url, headers={"User-Agent": "IBMBob-Installer/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "OrchestratorCLI-Installer/1.0"})
     with urllib.request.urlopen(req, timeout=120) as resp, open(dest, "wb") as f:
         while chunk := resp.read(65536):
             f.write(chunk)

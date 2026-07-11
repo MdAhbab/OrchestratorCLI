@@ -38,7 +38,7 @@ export function ProcessesView({
 
         <Section
           title="Orchestrator"
-          sub="ibm-cloud · custom agent · live routing graph + log"
+          sub="planner llm · live routing graph + log"
           open={orchOpen}
           onToggle={() => setOrchOpen((o) => !o)}
         >

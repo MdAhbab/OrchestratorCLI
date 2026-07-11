@@ -35,7 +35,6 @@ export type Provider = {
  * - DeepSeek: api_key only (platform.deepseek.com).
  * - Kimi Code: api_key only (Moonshot platform).
  * - Cline: api_key (BYOK — Anthropic/OpenAI/etc. keys passed through) or bearer.
- * - IBM BOB (watsonx Code Assistant): api_key (IBM Cloud IAM) OR bearer (IAM token).
  */
 export const DEFAULT_PROVIDERS: Provider[] = [
   {
@@ -147,23 +146,6 @@ export const DEFAULT_PROVIDERS: Provider[] = [
     models: ["cline-default", "cline-claude", "cline-gpt5"],
     dailyCap: 10,
   },
-  {
-    id: "bob",
-    name: "IBM BOB",
-    glyph: "∎",
-    color: "text-blue-500",
-    description: "IBM watsonx Code Assistant on Granite — enterprise auth via IBM Cloud IAM.",
-    status: "online",
-    enabled: true,
-    configured: false,
-    authMethod: "api_key",
-    authMethods: ["api_key", "bearer"],
-    accountProvider: "IBM Cloud",
-    model: "granite-3.2-code",
-    models: ["granite-3.2-code", "granite-3.1-code-base"],
-    endpoint: "https://us-south.ml.cloud.ibm.com",
-    dailyCap: 15,
-  },
 ];
 
 export type Workspace = { path: string; name: string };
@@ -225,7 +207,7 @@ const DEFAULT_STATE: AppState = {
   workspace: null,
   providers: DEFAULT_PROVIDERS,
   orchestrator: {
-    model: "granite-3.2-instruct",
+    model: "grok-3",
     routingStrategy: "specialty",
     parallelism: 4,
     autoFailover: true,

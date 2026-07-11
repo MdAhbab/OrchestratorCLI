@@ -132,7 +132,7 @@ lsof -ti:8000 | xargs kill -9
 
 ### Database path
 
-`run.py` reads `DATABASE_PATH` / `DATABASE_URL` from the environment or `backend/.env`. Default: `data/bob.db` at the repo root.
+`run.py` reads `DATABASE_PATH` / `DATABASE_URL` from the environment or `backend/.env`. Default: `storage/data/orchestrator.db` at the repo root.
 
 ### Backend fails to import
 

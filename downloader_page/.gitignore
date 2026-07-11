@@ -56,5 +56,4 @@ coverage/
 downloads/*
 !downloads/.gitkeep
 
-# Made with Bob
 .vercel

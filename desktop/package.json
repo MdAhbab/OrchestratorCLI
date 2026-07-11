@@ -34,7 +34,7 @@
     "wait-on": "^8.0.2"
   },
   "build": {
-    "appId": "com.ibm.bob.orchestrator",
+    "appId": "dev.ahbab.orchestrator",
     "productName": "AI Orchestrator",
     "copyright": "Copyright © Md Ahbab",
     "directories": {
@@ -60,8 +60,11 @@
         "to": "backend",
         "filter": [
           "**/*",
-          "!**/__pycache__/**",
-          "!**/venv/**",
+          "!venv{,/**/*}",
+          "!**/venv{,/**/*}",
+          "!__pycache__{,/**/*}",
+          "!**/__pycache__{,/**/*}",
+          "!**/*.pyc",
           "!**/.env"
         ]
       },

@@ -59,6 +59,30 @@ def ensure_node_modules() -> None:
             run(["npm", "install"], cwd=pkg_dir)
 
 
+def clean_release_dir() -> None:
+    """Kill any running app instance and clear desktop/release for a fresh unpack.
+
+    electron-builder fails with 'Access is denied' when a previous build's exe
+    is still running (a locked win-unpacked/AI Orchestrator.exe).
+    """
+    kill_cmd = (
+        ["taskkill", "/IM", "AI Orchestrator.exe", "/F", "/T"]
+        if IS_WINDOWS
+        else ["pkill", "-f", "AI Orchestrator"]
+    )
+    subprocess.run(kill_cmd, capture_output=True, shell=False)
+
+    if RELEASE_DIR.is_dir():
+        try:
+            shutil.rmtree(RELEASE_DIR)
+            print(f">> cleared {RELEASE_DIR.relative_to(ROOT)}")
+        except PermissionError:
+            sys.exit(
+                f"ERROR: cannot clear {RELEASE_DIR} — close any running "
+                "'AI Orchestrator' window (or File Explorer inside that folder) and retry."
+            )
+
+
 def bundle_python() -> None:
     run([sys.executable, str(ROOT / "packaging" / "fetch_python.py")], cwd=ROOT)
 
@@ -102,6 +126,7 @@ def main() -> int:
     print("=" * 70)
 
     ensure_node_modules()
+    clean_release_dir()
     if args.bundle_python:
         bundle_python()
 

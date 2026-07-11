@@ -11,6 +11,7 @@ export interface ElectronApi {
   onUpdateProgress?: (cb: (p: { percent: number }) => void) => void;
   onUpdateNotAvailable?: (cb: () => void) => void;
   selectWorkspaceFolder?: () => Promise<string | null>;
+  setTitleBarTheme?: (dark: boolean) => void;
 }
 
 declare global {

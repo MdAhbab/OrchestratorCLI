@@ -21,7 +21,7 @@ else:
         # Fallback to default behavior
         load_dotenv()
 
-_extra_dotenv = os.environ.get("DOTENV_PATH") or os.environ.get("BOB_DOTENV_PATH")
+_extra_dotenv = os.environ.get("DOTENV_PATH")
 if _extra_dotenv and Path(_extra_dotenv).is_file():
     load_dotenv(dotenv_path=_extra_dotenv, override=True)
 
@@ -168,7 +168,7 @@ class Settings(BaseSettings):
     
     def model_post_init(self, __context) -> None:
         """Post-initialization hook to create directories."""
-        ud = os.environ.get("ORCHESTRATOR_USER_DATA", "").strip() or os.environ.get("IBMBOB_USER_DATA", "").strip()
+        ud = os.environ.get("ORCHESTRATOR_USER_DATA", "").strip()
         if ud:
             root = Path(ud)
             object.__setattr__(self, "upload_dir", root / "uploads")

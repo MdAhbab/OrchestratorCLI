@@ -16,6 +16,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.classList.toggle("dark", theme === "dark");
     localStorage.setItem("orch.theme", theme);
+    // Desktop: recolor the native Windows window-control overlay to match.
+    window.electronAPI?.setTitleBarTheme?.(theme === "dark");
   }, [theme]);
 
   return (

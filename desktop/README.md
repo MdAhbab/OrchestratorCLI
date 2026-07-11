@@ -99,7 +99,7 @@ Packaged desktop mode keeps generated state in the OS user-data folder instead o
 
 | Data | Location |
 |------|----------|
-| SQLite DB | `userData/data/bob.db` |
+| SQLite DB | `userData/data/orchestrator.db` |
 | Generated uploads/artifacts | `userData/uploads/` |
 | Cache/temp | `userData/cache/`, `userData/tmp/` |
 | Stable local secrets | `userData/secrets/` |

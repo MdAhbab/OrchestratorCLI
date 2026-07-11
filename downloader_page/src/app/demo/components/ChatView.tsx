@@ -287,7 +287,7 @@ function MessageBubble({ m, onOpenProcesses }: { m: Msg; onOpenProcesses: () => 
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-baseline gap-2">
           <span className="text-[15.5px] text-zinc-900 dark:text-white">Orchestrator</span>
-          <span className="font-mono text-[12.5px] text-zinc-500">granite-3.2 · ibm-cloud</span>
+          <span className="font-mono text-[12.5px] text-zinc-500">grok-3 · planner</span>
           <span className="font-mono text-[12.5px] text-zinc-400">{m.ts}</span>
         </div>
         <div className="text-[16.5px] leading-relaxed text-zinc-700 dark:text-zinc-300">

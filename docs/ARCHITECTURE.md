@@ -23,7 +23,7 @@ Production-oriented multi-agent AI orchestration platform. The **orchestrator** 
 │  │  DeepSeek    │  └─────────────┘  └──────────────────────────┘ │
 └────────────────────────────┬────────────────────────────────────┘
                              │
-                    SQLite (data/bob.db)
+                    SQLite (storage/data/orchestrator.db)
 ```
 
 ## Layer responsibilities
@@ -128,7 +128,7 @@ python -m backend.database.init_db --force
 Apply migration for existing DBs:
 
 ```bash
-sqlite3 data/bob.db < migrations/002_orchestrator_providers.sql
+sqlite3 storage/data/orchestrator.db < migrations/002_orchestrator_providers.sql
 ```
 
 ## Deployment

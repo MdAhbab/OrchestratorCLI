@@ -23,6 +23,32 @@ import { setupAutoUpdater } from "./updater";
 const isDev = process.env.ORCHESTRATOR_DEV === "1";
 const VITE_DEV_URL = process.env.ORCHESTRATOR_VITE_URL ?? "http://127.0.0.1:5173";
 
+// Mirror all main-process output to userData/logs/main.log so packaged-app
+// startup failures are diagnosable (a double-clicked GUI app has no console).
+const logFile = path.join(app.getPath("userData"), "logs", "main.log");
+function flog(line: string): void {
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${line}\n`);
+  } catch {
+    /* logging must never break the app */
+  }
+}
+for (const level of ["log", "warn", "error"] as const) {
+  const original = console[level].bind(console);
+  console[level] = (...args: unknown[]) => {
+    flog(args.map(String).join(" "));
+    original(...args);
+  };
+}
+process.on("uncaughtException", (err) => {
+  flog(`uncaughtException: ${err.stack ?? err}`);
+});
+process.on("unhandledRejection", (reason) => {
+  flog(`unhandledRejection: ${reason}`);
+});
+flog(`--- app start pid=${process.pid} version=${app.getVersion()} packaged=${app.isPackaged} ---`);
+
 let mainWindow: BrowserWindow | null = null;
 let backend: BackendManager | null = null;
 let uiServer: http.Server | null = null;
@@ -59,10 +85,12 @@ async function createWindow(loadUrl: string): Promise<void> {
       ? {
           frame: false,
           titleBarStyle: "hidden" as const,
+          // Height matches the renderer's h-14 top bar so the native
+          // window controls sit inside that row instead of above it.
           titleBarOverlay: {
             color: "#09090b",
             symbolColor: "#e4e4e7",
-            height: 40,
+            height: 56,
           },
         }
       : { frame: true }),
@@ -125,15 +153,18 @@ async function createWindow(loadUrl: string): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
+  console.log("[app] bootstrap: starting backend…");
   backend = new BackendManager();
   try {
     await backend.start();
+    console.log(`[app] backend healthy at ${backend.baseUrl}`);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to start backend";
+    console.error(`[app] backend failed to start: ${message}`);
     dialog.showErrorBox(
       "AI Orchestrator — Backend",
-      `${message}\n\nEnsure Python 3.8+ is installed and restart the app.\nSee README for details.`,
+      `${message}\n\nEnsure Python 3.8+ is installed and restart the app.\nLog: ${logFile}`,
     );
     app.quit();
     return;
@@ -177,6 +208,21 @@ ipcMain.on("app-version", (event) => {
   event.returnValue = app.getVersion();
 });
 
+// Keep the native window-control overlay in sync with the app theme so it
+// doesn't render as a dark block on a light UI.
+ipcMain.on("titlebar-theme", (_event, dark: boolean) => {
+  if (process.platform !== "win32") return;
+  try {
+    mainWindow?.setTitleBarOverlay({
+      color: dark ? "#09090b" : "#fafafa",
+      symbolColor: dark ? "#e4e4e7" : "#3f3f46",
+      height: 56,
+    });
+  } catch {
+    /* window may be closing */
+  }
+});
+
 ipcMain.handle("workspace-select-folder", async () => {
   const options: OpenDialogOptions = {
     title: "Select workspace folder",
@@ -192,6 +238,7 @@ ipcMain.handle("workspace-select-folder", async () => {
 });
 
 if (!gotLock) {
+  flog("another instance holds the single-instance lock — quitting");
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -202,6 +249,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    flog("app ready");
     if (!isDev && !fs.existsSync(path.join(getFrontendDistDir(), "index.html"))) {
       console.warn(
         `[ui] No production build at ${getFrontendDistDir()}; dev may use Vite.`,

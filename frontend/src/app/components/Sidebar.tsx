@@ -196,7 +196,7 @@ export function Sidebar({
           Orchestrator
         </span>
         <button
-          onClick={() => (onCloseMobile ? onCloseMobile() : setCollapsed(true))}
+          onClick={() => (mobileOpen ? onCloseMobile?.() : setCollapsed(true))}
           title="Collapse sidebar"
           className="rounded-md border border-zinc-200/70 bg-white p-1.5 text-zinc-500 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-400 dark:hover:bg-white/[0.06]"
         >
@@ -301,6 +301,8 @@ export function Sidebar({
               >
                 {!backendHealthy
                   ? "offline"
+                  : git?.error
+                  ? "no workspace"
                   : !git?.is_repo
                   ? "no repo"
                   : (git?.files_changed ?? 0) === 0
@@ -320,6 +322,20 @@ export function Sidebar({
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
+                {backendHealthy && git?.error ? (
+                  <div className="space-y-2 border-t border-zinc-200/70 p-3 dark:border-white/[0.06]">
+                    <p className="text-[11px] leading-relaxed text-zinc-500">
+                      No workspace folder configured — git tracking, artifacts, and
+                      shared context need one.
+                    </p>
+                    <button
+                      onClick={onOpenSettings}
+                      className="w-full rounded-md border border-amber-300/50 bg-amber-50 px-2 py-1.5 text-[11.5px] text-amber-800 transition hover:bg-amber-100 dark:border-amber-400/25 dark:bg-amber-400/[0.08] dark:text-amber-300 dark:hover:bg-amber-400/[0.15]"
+                    >
+                      Set workspace folder
+                    </button>
+                  </div>
+                ) : (
                 <div className="space-y-2 border-t border-zinc-200/70 p-3 dark:border-white/[0.06]">
                   <GitField label="Branch" value={git?.branch ?? "—"} mono />
                   <GitField
@@ -368,6 +384,7 @@ export function Sidebar({
                     </pre>
                   )}
                 </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

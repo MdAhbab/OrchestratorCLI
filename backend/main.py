@@ -240,7 +240,7 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-_bundled = os.getenv("ORCHESTRATOR_BUNDLED", os.getenv("BOB_BUNDLED", "")).strip().lower() in ("1", "true", "yes")
+_bundled = os.getenv("ORCHESTRATOR_BUNDLED", "").strip().lower() in ("1", "true", "yes")
 _dist_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _bundled and _dist_dir.is_dir():
     app.mount("/", StaticFiles(directory=str(_dist_dir), html=True), name="frontend")

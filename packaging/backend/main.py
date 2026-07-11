@@ -159,10 +159,7 @@ def main():
         if str(repo_root) not in sys.path:
             sys.path.insert(0, str(repo_root))
 
-        os.environ.setdefault(
-            "ORCHESTRATOR_BUNDLED",
-            os.environ.get("BOB_BUNDLED", "1"),
-        )
+        os.environ.setdefault("ORCHESTRATOR_BUNDLED", "1")
 
         # Import the FastAPI application
         from backend.main import app  # type: ignore
@@ -230,5 +227,3 @@ if __name__ == "__main__":
         traceback.print_exc()
         input("Press Enter to exit...")
         sys.exit(1)
-
-# Made with Bob

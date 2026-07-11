@@ -26,7 +26,7 @@ export function OrchestratorGraph() {
   const [active, setActive] = useState(0);
   const [running, setRunning] = useState(true);
   const [logs, setLogs] = useState<string[]>([
-    "[00:00:01] orchestrator awake · custom-agent/granite-v2",
+    "[00:00:01] orchestrator awake · grok-3/routing-v2",
     "[00:00:02] received master prompt (1,284 tokens)",
     "[00:00:02] decomposed into 6 subtasks",
     "[00:00:03] wrote divisions.md · 6 agents notified",
@@ -59,10 +59,10 @@ export function OrchestratorGraph() {
           <OrchestratorLogo size={28} className="drop-shadow-[0_0_10px_rgba(139,92,246,0.5)]" />
           <div className="leading-tight">
             <div className="bg-gradient-to-r from-indigo-400 via-violet-400 to-fuchsia-400 bg-clip-text text-[15.5px] text-transparent">
-              Orchestrator granite-3.2 (dev clone)
+              Orchestrator grok-3 (demo)
             </div>
             <div className="font-mono text-[12.5px] text-zinc-500">
-              ibm-cloud · custom-agent · routing-v2
+              planner llm · quota-aware · routing-v2
             </div>
           </div>
           <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[12px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
@@ -189,7 +189,7 @@ export function OrchestratorGraph() {
               fontFamily="Geist Mono, monospace"
               className="fill-indigo-600 dark:fill-indigo-300"
             >
-              granite-3.2
+              grok-3
             </text>
             <text
               x={210}
@@ -199,7 +199,7 @@ export function OrchestratorGraph() {
               fontFamily="Geist Mono, monospace"
               className="fill-zinc-500"
             >
-              ibm-cloud
+              planner
             </text>
           </svg>
 
