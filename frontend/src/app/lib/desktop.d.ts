@@ -6,10 +6,17 @@ export interface OrchestratorDesktopApi {
 export interface ElectronApi {
   appVersion?: string;
   installUpdate?: () => void;
-  onUpdateAvailable?: (cb: (info: { version: string }) => void) => void;
-  onUpdateDownloaded?: (cb: (info: { version: string }) => void) => void;
-  onUpdateProgress?: (cb: (p: { percent: number }) => void) => void;
-  onUpdateNotAvailable?: (cb: () => void) => void;
+  checkForUpdates?: () => void;
+  onUpdateAvailable?: (
+    cb: (info: { version: string }) => void,
+  ) => () => void;
+  onUpdateDownloaded?: (
+    cb: (info: { version: string }) => void,
+  ) => () => void;
+  onUpdateProgress?: (
+    cb: (p: { percent: number }) => void,
+  ) => () => void;
+  onUpdateNotAvailable?: (cb: () => void) => () => void;
   selectWorkspaceFolder?: () => Promise<string | null>;
   setTitleBarTheme?: (dark: boolean) => void;
 }

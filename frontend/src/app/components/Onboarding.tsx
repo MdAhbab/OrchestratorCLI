@@ -523,7 +523,7 @@ function StepWorkspace({
 
     if (!looksLikeFullPath(trimmed)) {
       setPathValid(false);
-      setValidationError("Paste a full path, for example F:\\Projects\\BOB or ~/projects/app.");
+      setValidationError("Paste a full path, for example C:\\Projects\\my-app or ~/projects/app.");
       return;
     }
 

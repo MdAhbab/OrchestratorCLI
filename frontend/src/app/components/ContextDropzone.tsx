@@ -23,16 +23,6 @@ export type CtxFile = {
   pinned?: boolean;
 };
 
-export const INITIAL_CTX: CtxFile[] = [
-  { id: "1", name: "skill.md", size: "4.2 kb", status: "synced", agents: 6, source: "user", pinned: true },
-  { id: "2", name: "plan.md", size: "8.1 kb", status: "synced", agents: 6, source: "user", pinned: true },
-  { id: "3", name: "divisions.md", size: "3.4 kb", status: "synced", agents: 6, source: "orchestrator", pinned: true },
-  { id: "4", name: "architecture.md", size: "12.4 kb", status: "syncing", agents: 4, source: "user" },
-  { id: "5", name: "schema.prisma", size: "2.0 kb", status: "synced", agents: 6, source: "user" },
-  { id: "6", name: "task-graph.md", size: "1.8 kb", status: "synced", agents: 6, source: "orchestrator" },
-  { id: "7", name: "CHANGELOG.md", size: "6.7 kb", status: "stale", agents: 2, source: "user" },
-];
-
 async function uploadSharedFile(file: File): Promise<void> {
   const form = new FormData();
   form.append("file", file);

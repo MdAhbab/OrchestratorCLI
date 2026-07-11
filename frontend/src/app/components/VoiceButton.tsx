@@ -32,6 +32,20 @@ export function VoiceButton({ onTranscript, onPartial }: Props) {
     return () => clearInterval(id);
   }, [recording]);
 
+  // ⌘/Ctrl+Shift+V toggles dictation (documented in Settings > Shortcuts).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        if (recording) stop();
+        else if (supported) start();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording, supported]);
+
   const start = () => {
     const SR =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;

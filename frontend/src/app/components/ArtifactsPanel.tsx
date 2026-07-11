@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileText, Download, User, Folder } from "lucide-react";
+import { toast } from "sonner";
 import { apiFetch, apiPath } from "../lib/api";
 import { usePolling } from "../lib/usePolling";
 
@@ -24,6 +25,13 @@ export function ArtifactsPanel({ activeSessionId }: { activeSessionId?: number |
   const [artifactDir, setArtifactDir] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Don't carry the previous session's artifact list into the next one.
+  useEffect(() => {
+    setArtifacts([]);
+    setArtifactDir(null);
+    setLoading(Boolean(activeSessionId));
+  }, [activeSessionId]);
+
   usePolling(
     async (signal) => {
       if (!activeSessionId) {
@@ -34,9 +42,9 @@ export function ArtifactsPanel({ activeSessionId }: { activeSessionId?: number |
         const res = await apiFetch(`/workspace/artifacts/session/${activeSessionId}`, { signal });
         if (!res.ok) return;
         const data: ArtifactsResponse = await res.json();
-        if (!signal.aborted && data.exists) {
-          setArtifacts(data.files ?? []);
-          setArtifactDir(data.artifact_dir ?? null);
+        if (!signal.aborted) {
+          setArtifacts(data.exists ? data.files ?? [] : []);
+          setArtifactDir(data.exists ? data.artifact_dir ?? null : null);
         }
       } catch {
         /* backend unreachable — keep last known artifacts */
@@ -78,9 +86,9 @@ export function ArtifactsPanel({ activeSessionId }: { activeSessionId?: number |
     if (!artifactDir) return;
     try {
       await navigator.clipboard.writeText(artifactDir);
-      alert(`Copied shared folder path to clipboard:\n${artifactDir}`);
+      toast.success("Artifact folder path copied to clipboard.");
     } catch {
-      // fallback
+      toast.error("Could not copy to clipboard.");
     }
   };
 

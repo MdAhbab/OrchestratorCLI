@@ -86,7 +86,13 @@ export function TopBar({
         }
       | undefined;
     if (!api?.onUpdateDownloaded) return;
-    api.onUpdateDownloaded((info) => setUpdateVersion(info.version));
+    // preload subscribe returns an off() handle — capture it so HMR remounts
+    // and unmounts don't stack duplicate listeners (otherwise update events
+    // would fire 2x, 3x, ... per actual emit).
+    const off = api.onUpdateDownloaded((info) => setUpdateVersion(info.version));
+    return () => {
+      off();
+    };
   }, []);
 
   usePolling(async (signal) => {

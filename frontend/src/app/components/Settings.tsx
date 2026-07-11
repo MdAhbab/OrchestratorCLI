@@ -30,7 +30,7 @@ import { OrchestratorLogo } from "./OrchestratorLogo";
 import { useTheme } from "./theme";
 import { Dropdown } from "./Sidebar";
 import { TerminalCard, type CliRuntime } from "./TerminalCard";
-import { ContextDropzone, INITIAL_CTX, type CtxFile } from "./ContextDropzone";
+import { ContextDropzone, type CtxFile } from "./ContextDropzone";
 import { apiFetch, apiPath, readSseJsonStream } from "../lib/api";
 import { orchestratorToApiPayload } from "../lib/orchestratorConfig";
 import { CliInstallHint } from "./CliInstallHint";
@@ -474,7 +474,7 @@ function GeneralPanel() {
             )}
           </div>
         </div>
-        <Row title="Theme" desc="Dark, light, or system">
+        <Row title="Theme" desc="Dark or light">
           <button
             onClick={toggle}
             className="flex items-center gap-1.5 rounded-md border border-zinc-200/70 bg-white px-3 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-zinc-200"
@@ -932,7 +932,9 @@ function TerminalsPanel({ clis }: { clis: CliRuntime[] }) {
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
         {filtered.map((c) => (
-          <TerminalCard key={c.id} cli={c} defaultMenuOpen={false} />
+          // lazyConnect: opening this tab must not spawn a PTY per provider —
+          // each card offers "Connect terminal" on demand instead.
+          <TerminalCard key={c.id} cli={c} defaultMenuOpen={false} lazyConnect />
         ))}
         {filtered.length === 0 && (
           <div className="col-span-full rounded-xl border border-dashed border-zinc-300/70 bg-zinc-50/50 px-6 py-10 text-center text-[12px] text-zinc-500 dark:border-white/10 dark:bg-white/[0.02]">
@@ -1060,6 +1062,7 @@ function OrchestratorPanel() {
           <button
             type="button"
             onClick={() => {
+              if (!confirm("Reset the orchestrator model, routing, and caps to defaults?")) return;
               void apiFetch("/orchestrator/config/reset", { method: "POST" }).then(() =>
                 window.location.reload()
               );
@@ -1140,8 +1143,10 @@ function ContextPanel() {
             onChange={(v) => setPrefs((p) => ({ ...p, autoSync: v }))}
           />
         </Row>
-        <Row title="Auto-generated files" desc="Let the orchestrator write divisions.md & task-graph.md">
-          <Toggle on={true} onChange={() => {}} />
+        <Row title="Auto-generated files" desc="The orchestrator writes divisions.md into workspace/shared on every plan">
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/[0.08] dark:text-emerald-300">
+            <Check className="h-2.5 w-2.5" /> Always on
+          </span>
         </Row>
       </div>
       <div className="h-[420px] overflow-hidden rounded-xl border border-zinc-200/70 bg-white/60 dark:border-white/[0.06] dark:bg-zinc-950/40">
@@ -1181,8 +1186,10 @@ function NotificationsPanel() {
             }}
           />
         </Row>
-        <Row title="Rate-limit warnings" desc="Notify at 85% quota burn">
-          <Toggle on={true} onChange={() => {}} />
+        <Row title="Rate-limit warnings" desc="Quota bars flag providers at 85% burn and reroute at 90%">
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/[0.08] dark:text-emerald-300">
+            <Check className="h-2.5 w-2.5" /> Always on
+          </span>
         </Row>
       </div>
       <ApplyButton
@@ -1205,10 +1212,10 @@ const KEYS: { combo: string; action: string }[] = [
   { combo: "⌘ ⇧ P", action: "Toggle Processes view" },
   { combo: "⌘ ,", action: "Open settings" },
   { combo: "⌘ /", action: "Focus chat input" },
-  { combo: "⌘ ⇧ V", action: "Voice dictation" },
+  { combo: "⌘ ⇧ V", action: "Toggle voice dictation" },
   { combo: "⌘ ⇧ N", action: "New session" },
-  { combo: "⌘ Enter", action: "Dispatch to orchestrator" },
-  { combo: "Esc", action: "Cancel current job" },
+  { combo: "Enter", action: "Dispatch to orchestrator (⇧ Enter for newline)" },
+  { combo: "Esc", action: "Close palette / dialogs" },
 ];
 
 function ShortcutsPanel() {
@@ -1298,11 +1305,11 @@ function PrivacyPanel() {
             <Check className="h-2.5 w-2.5" /> Disabled by design
           </span>
         </Row>
-        <Row title="Credential storage" desc="OS keychain (Keychain / Credential Vault / libsecret)">
-          <span className="font-mono text-[10.5px] text-zinc-500">os keychain</span>
+        <Row title="Credential storage" desc="Encrypted at rest (Fernet) in the local database; the key never leaves this device">
+          <span className="font-mono text-[10.5px] text-zinc-500">encrypted · on-device</span>
         </Row>
-        <Row title="Session storage" desc="YAML files inside your workspace folder">
-          <span className="font-mono text-[10.5px] text-zinc-500">.orchestrator/sessions/</span>
+        <Row title="Session storage" desc="Chat history and runs live in the local SQLite database">
+          <span className="font-mono text-[10.5px] text-zinc-500">local sqlite</span>
         </Row>
         <Row
           title="Generated cache"
@@ -1600,27 +1607,37 @@ function AboutPanel() {
     "idle" | "checking" | "up-to-date" | "available"
   >("idle");
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
+  const isDesktop = Boolean(window.orchestratorDesktop?.isDesktop);
+  const appVersion = window.electronAPI?.appVersion ?? "0.9.1";
 
   useEffect(() => {
-    const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI as
-      | {
-          onUpdateAvailable?: (cb: (info: { version: string }) => void) => void;
-          onUpdateNotAvailable?: (cb: () => void) => void;
-        }
-      | undefined;
+    const api = window.electronAPI;
     if (!api) return;
-    api.onUpdateAvailable?.((info) => {
+    // preload subscribe returns an off() handle — capture both so HMR
+    // remounts and unmounts don't stack duplicate listeners (otherwise update
+    // events would fire 2x, 3x, ... per actual emit).
+    const offAvailable = api.onUpdateAvailable?.((info) => {
       setAvailableVersion(info.version);
       setUpdateStatus("available");
     });
-    api.onUpdateNotAvailable?.(() => setUpdateStatus("up-to-date"));
+    const offNotAvailable = api.onUpdateNotAvailable?.(() =>
+      setUpdateStatus("up-to-date"),
+    );
+    return () => {
+      offAvailable?.();
+      offNotAvailable?.();
+    };
   }, []);
 
   const checkForUpdates = () => {
     setUpdateStatus("checking");
-    setTimeout(() => {
-      if (updateStatus === "checking") setUpdateStatus("up-to-date");
-    }, 10_000);
+    window.electronAPI?.checkForUpdates?.();
+    // Fallback if the updater never answers (e.g. offline, unpacked build);
+    // functional update so we read the CURRENT status, not a stale closure.
+    window.setTimeout(
+      () => setUpdateStatus((s) => (s === "checking" ? "up-to-date" : s)),
+      15_000,
+    );
   };
 
   return (
@@ -1634,7 +1651,7 @@ function AboutPanel() {
               Orchestrator
             </div>
             <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-              v0.8.0 · single-user desktop
+              v{appVersion} · single-user desktop
             </div>
           </div>
         </div>
@@ -1643,15 +1660,21 @@ function AboutPanel() {
           Codex, Copilot, DeepSeek, Kimi, Cline, and Grok orchestrator routing.
         </p>
         <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={checkForUpdates}
-            disabled={updateStatus === "checking"}
-            className="flex items-center gap-1.5 rounded-md border border-zinc-200/70 bg-white px-2.5 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
-          >
-            <RefreshCw className={`h-3 w-3 ${updateStatus === "checking" ? "animate-spin" : ""}`} />
-            {updateStatus === "checking" ? "Checking…" : "Check for updates"}
-          </button>
+          {isDesktop ? (
+            <button
+              type="button"
+              onClick={checkForUpdates}
+              disabled={updateStatus === "checking"}
+              className="flex items-center gap-1.5 rounded-md border border-zinc-200/70 bg-white px-2.5 py-1.5 text-[11.5px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-60 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-zinc-200"
+            >
+              <RefreshCw className={`h-3 w-3 ${updateStatus === "checking" ? "animate-spin" : ""}`} />
+              {updateStatus === "checking" ? "Checking…" : "Check for updates"}
+            </button>
+          ) : (
+            <span className="font-mono text-[10.5px] text-zinc-500">
+              auto-update available in the desktop app
+            </span>
+          )}
           {updateStatus === "up-to-date" && (
             <span className="flex items-center gap-1 rounded-md border border-emerald-300/40 bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/[0.08] dark:text-emerald-300">
               <Check className="h-2.5 w-2.5" /> Up to date
